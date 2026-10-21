@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Environment files (real secrets) — keep the .env.example templates committed
+.env
+backend/.env
+frontend/.env
+
+# Runtime data (SQLite DB + WAL/SHM)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

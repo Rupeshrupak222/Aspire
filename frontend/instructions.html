@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aspire by Adyapan — Instructions</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar"><div class="logo">ady.</div><div><strong>Aspire by Adyapan</strong><div class="tag">Aspire. Achieve. Adyapan.</div></div></div>
+<div class="wrap">
+  <div class="card">
+    <h1 id="insTitle">Test Instructions</h1>
+    <p class="sub">Read carefully before you begin.</p>
+    <ul style="line-height:2">
+      <li><strong id="qCount">40</strong> questions · <strong id="dur">90</strong> minutes.</li>
+      <li id="breakdown">10 aptitude · 25 technical · 5 coding questions.</li>
+      <li id="codeNote" style="display:none">Some questions ask you to <strong>write code</strong> — it is executed and graded automatically.</li>
+      <li>The timer starts when you begin. The test <strong>auto-submits</strong> when time runs out.</li>
+      <li>Switching browser tabs is <strong>detected and recorded</strong>.</li>
+      <li>Your score, scholarship and certificate appear <strong>instantly</strong> after submission.</li>
+      <li>Scholarship tiers: 90%+ → 100% · 75–89% → 50% · 60–74% → 25% · 40–59% → 10%.</li>
+    </ul>
+    <button id="startBtn" class="btn">Start Test Now</button>
+    <div id="insErr" class="err"></div>
+  </div>
+</div>
+<script src="/js/config.js"></script>
+<script src="/js/common.js"></script>
+<script>
+(async () => {
+  if (!getToken()) { window.location.href = '/index.html'; return; }
+  try {
+    const cfg = await api('/api/config/public');
+    document.getElementById('insTitle').textContent = cfg.test_title || 'Test Instructions';
+    document.getElementById('qCount').textContent = cfg.question_count;
+    document.getElementById('dur').textContent = cfg.duration_minutes;
+    if (cfg.breakdown) document.getElementById('breakdown').textContent = cfg.breakdown + ' questions.';
+    if (cfg.code_questions_enabled) document.getElementById('codeNote').style.display = 'list-item';
+  } catch (e) { showErr('insErr', e.message); }
+  document.getElementById('startBtn').addEventListener('click', () => { window.location.href = '/test.html'; });
+})();
+</script>
+</body>
+</html>

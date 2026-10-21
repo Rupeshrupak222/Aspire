@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aspire by Adyapan — Your Result</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar"><div class="logo">ady.</div><div><strong>Aspire by Adyapan</strong><div class="tag">Aspire. Achieve. Adyapan.</div></div></div>
+<div class="wrap">
+  <div class="card" style="text-align:center">
+    <h1>Your Result</h1>
+    <p class="sub" id="rName"></p>
+    <div class="score-big" id="rScore">—</div>
+    <div style="font-size:18px" id="rPct">—</div>
+    <div><span class="badge" id="rSch">—</span></div>
+    <div id="lateNote" class="err" style="display:none;text-align:left">Note: your test was submitted after the timer expired.</div>
+    <div class="kv" style="text-align:left;max-width:480px;margin:20px auto">
+      <b>Scholarship claim code</b><span id="rClaim" style="font-weight:800;color:var(--accent-dark)">—</span>
+      <b>Certificate ID</b><span id="rCertId">—</span>
+    </div>
+    <a id="certBtn" class="btn" href="#" download>Download Certificate (PDF)</a>
+    <p class="sub" style="margin-top:16px">Share your claim code with the Adyapan counsellor to apply your scholarship.</p>
+    <div id="detailWrap" style="display:none;text-align:left;margin-top:20px">
+      <h2>Question-wise break-up</h2>
+      <table class="data"><tr><th>#</th><th>Category</th><th>Type</th><th>Marks</th></tr><tbody id="detailBody"></tbody></table>
+    </div>
+  </div>
+</div>
+<script src="/js/config.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/result.js"></script>
+</body>
+</html>

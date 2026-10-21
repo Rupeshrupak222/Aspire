@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aspire — Admin Panel</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="topbar"><div class="logo">ady.</div><div><strong>Aspire Admin</strong><div class="tag">internal panel</div></div>
+  <div style="margin-left:auto"><button id="logoutBtn" class="btn small ghost" style="margin:0">Log out</button></div></div>
+<div class="wrap">
+  <div id="loginBox" class="card" style="max-width:440px;margin:60px auto">
+    <h1>Admin login</h1>
+    <p class="sub">Enter the ADMIN_TOKEN from the server environment.</p>
+    <label>Admin token</label>
+    <input id="adminTokenInput" type="password" placeholder="paste token">
+    <button id="loginBtn" class="btn">Log in</button>
+  </div>
+  <div id="adminBox" style="display:none">
+    <div id="judge0note" style="display:none"></div>
+    <div class="tabs">
+      <button class="tab active" data-tab="questions">Questions</button>
+      <button class="tab" data-tab="config">Test Config</button>
+      <button class="tab" data-tab="results">Results</button>
+      <button class="tab" data-tab="report">College Report</button>
+    </div>
+
+    <div class="tabpane card" id="pane-questions">
+      <h2>Question bank</h2>
+      <button id="addQBtn" class="btn small">+ Add question</button>
+      <table class="data"><tr><th>ID</th><th>Type</th><th>Category</th><th>Question</th><th>Marks</th><th>Sample</th><th>Actions</th></tr><tbody id="qBody"></tbody></table>
+      <div id="qForm" class="card" style="display:none;margin-top:20px;background:#FDFDFB">
+        <h2 id="qFormTitle">Add question</h2>
+        <div id="qFormBody"></div>
+        <button id="saveQBtn" class="btn">Save question</button>
+        <button id="cancelQBtn" class="btn ghost">Cancel</button>
+        <div id="qFormErr" class="err"></div>
+      </div>
+    </div>
+
+    <div class="tabpane card" id="pane-config" style="display:none">
+      <h2>Test configuration</h2>
+      <div id="judge0Notice" class="okmsg" style="margin-bottom:12px"></div>
+      <label>Test title</label><input id="c_title">
+      <div class="row">
+        <div><label>Duration (minutes)</label><input id="c_duration" type="number" min="1"></div>
+      </div>
+      <label style="margin-top:8px">Questions per test — per-category quotas (random subset per category, interleaved)</label>
+      <div class="row">
+        <div><label>Aptitude</label><input id="c_q_apt" type="number" min="0"></div>
+        <div><label>Technical (MCQ)</label><input id="c_q_tech" type="number" min="0"></div>
+        <div><label>Coding (Judge0)</label><input id="c_q_code" type="number" min="0"></div>
+      </div>
+      <label><input id="c_shuffle_q" type="checkbox" style="width:auto"> Shuffle question order</label>
+      <label><input id="c_shuffle_o" type="checkbox" style="width:auto"> Shuffle MCQ options</label>
+      <label>Brand name</label><input id="c_brand">
+      <label>Accent color</label><input id="c_accent">
+      <label>Scholarship slabs (JSON array of {"min","scholarship"}, highest first)</label>
+      <textarea id="c_slabs" rows="7" style="font-family:monospace"></textarea>
+      <button id="saveCfgBtn" class="btn">Save configuration</button>
+      <div id="cfgOk" class="okmsg"></div>
+    </div>
+
+    <div class="tabpane card" id="pane-results" style="display:none">
+      <h2>Results</h2>
+      <div class="row">
+        <div><label>College contains</label><input id="f_college"></div>
+        <div><label>Track</label><input id="f_track"></div>
+      </div>
+      <div class="row">
+        <div><label>Min % </label><input id="f_minp" type="number" min="0" max="100"></div>
+        <div><label>&nbsp;</label><div><button id="filterBtn" class="btn small">Apply filters</button>
+          <button id="csvBtn" class="btn small ghost">Download CSV</button></div></div>
+      </div>
+      <p class="sub" id="resCount"></p>
+      <table class="data"><tr><th>Name</th><th>Phone</th><th>College</th><th>Track</th><th>Score</th><th>%</th><th>Scholarship</th><th>Claim code</th><th>Submitted</th></tr><tbody id="resBody"></tbody></table>
+    </div>
+
+    <div class="tabpane card" id="pane-report" style="display:none">
+      <h2>Per-college batch report</h2>
+      <label>College name (partial match)</label>
+      <div class="row"><div><input id="repCollege" placeholder="e.g. JNTU"></div>
+      <div><label>&nbsp;</label><button id="repBtn" class="btn small">Generate report</button></div></div>
+      <div id="repOut" style="margin-top:16px"></div>
+    </div>
+  </div>
+</div>
+<script src="/js/config.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>

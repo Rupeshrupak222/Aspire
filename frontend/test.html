@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aspire by Adyapan — Test</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="timer" id="timerBar">
+  <div><span id="testTitle">Aspire Scholarship Test</span> · <span id="studentName" style="font-weight:400"></span></div>
+  <div>⏱ <span id="timerText">--:--</span></div>
+</div>
+<div class="wrap">
+  <div class="card">
+    <div id="qcount" style="color:var(--muted);font-size:14px"></div>
+    <div class="palette" id="palette"></div>
+    <div id="qbox"></div>
+    <div class="navbtns">
+      <button id="prevBtn" class="btn ghost">← Previous</button>
+      <button id="nextBtn" class="btn ghost">Next →</button>
+    </div>
+    <div style="text-align:center"><button id="submitBtn" class="btn">Submit Test</button></div>
+    <div id="testErr" class="err"></div>
+  </div>
+</div>
+<script src="/js/config.js"></script>
+<script src="/js/common.js"></script>
+<script src="/js/test.js"></script>
+</body>
+</html>

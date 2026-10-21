@@ -1,0 +1,11 @@
+{
+  "name": "aspire-frontend",
+  "version": "1.0.0",
+  "description": "Aspire by Adyapan — static frontend (vanilla HTML/CSS/JS, no build step).",
+  "private": true,
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "start": "node dev-server.js"
+  }
+}

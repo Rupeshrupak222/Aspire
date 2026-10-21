@@ -1,0 +1,14 @@
+services:
+  aspire:
+    build: .
+    container_name: aspire-test-platform
+    ports:
+      - "3000:3000"
+    env_file:
+      - backend/.env
+    environment:
+      - DB_PATH=/app/data/aspire.db
+    volumes:
+      # Persist the SQLite database across restarts
+      - ./data:/app/data
+    restart: unless-stopped
