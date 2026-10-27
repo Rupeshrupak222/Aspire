@@ -4,6 +4,13 @@ const crypto = require('crypto');
 const { db, getConfig } = require('../db');
 const judge0 = require('../services/judge0');
 const { generateCertificate } = require('../services/certificate');
+const validate = require('../middleware/validate');
+const asyncHandler = require('../utils/async-handler');
+const { NotFoundError, ConflictError, AppError } = require('../errors/app-error');
+const { registerSchema } = require('../validation/student.schemas');
+const { attemptTokenParamSchema, heartbeatSchema, submitSchema } = require('../validation/attempt.schemas');
+const { certificateParamSchema } = require('../validation/certificate.schemas');
+const { registerLimiter, submitLimiter, certificateLimiter } = require('../security/rate-limit');
 
 const router = express.Router();
 
@@ -16,16 +23,6 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
-}
-
-// Normalize Indian mobile numbers to 10 digits. Returns null if invalid.
-function normalizePhone(raw) {
-  if (!raw) return null;
-  let d = String(raw).replace(/\D/g, '');
-  if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
-  else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
-  if (!/^[6-9]\d{9}$/.test(d)) return null;
-  return d;
 }
 
 const randHex = (n) => crypto.randomBytes(n).toString('hex');
@@ -43,7 +40,13 @@ function tierFor(percentage, slabsJson) {
     slabs = JSON.parse(slabsJson);
     if (!Array.isArray(slabs) || slabs.length === 0) throw new Error('bad slabs');
   } catch {
-    slabs = [{ min: 90, scholarship: 100 }, { min: 75, scholarship: 50 }, { min: 60, scholarship: 25 }, { min: 40, scholarship: 10 }, { min: 0, scholarship: 0 }];
+    slabs = [
+      { min: 90, scholarship: 100 },
+      { min: 75, scholarship: 50 },
+      { min: 60, scholarship: 25 },
+      { min: 40, scholarship: 10 },
+      { min: 0, scholarship: 0 }
+    ];
   }
   const sorted = slabs.slice().sort((a, b) => b.min - a.min);
   for (const s of sorted) {
@@ -78,12 +81,6 @@ function readQuotas(cfg) {
   };
 }
 
-// Build the question set for a new attempt: up to quota questions from each
-// category (random subset per category, then interleaved by shuffling the
-// whole set). Never includes correct answers / test cases.
-// Category <-> type mapping is strict: aptitude/technical are MCQ, coding is
-// code-writing. Coding questions are excluded entirely when Judge0 is not
-// configured, so the test still runs (shorter) with zero human intervention.
 function buildAttemptQuestions() {
   const cfg = getConfig();
   const quotas = readQuotas(cfg);
@@ -100,12 +97,12 @@ function buildAttemptQuestions() {
   const selected = [];
   for (const p of plan) {
     if (p.n <= 0) continue;
-    const pool = db.prepare('SELECT id FROM questions WHERE category = ? AND type = ?')
+    const pool = db.prepare("SELECT id FROM questions WHERE category = ? AND type = ? AND (status = 'PUBLISHED' OR status IS NULL)")
       .all(p.category, p.type).map((r) => r.id);
     const ids = cfg.shuffle_questions !== '0' ? shuffle(pool) : pool.slice();
     selected.push(...ids.slice(0, Math.min(p.n, ids.length)));
   }
-  if (selected.length === 0) throw new Error('Question bank is empty — add questions via the admin panel');
+  if (selected.length === 0) throw new AppError('Question bank is empty — add questions via the admin panel', 500, 'QUESTION_BANK_EMPTY');
 
   // Interleave categories so the test feels mixed.
   const ordered = cfg.shuffle_questions !== '0' ? shuffle(selected) : selected;
@@ -148,18 +145,20 @@ router.get('/config/public', (req, res) => {
 });
 
 // Register a student. One attempt per phone number.
-router.post('/register', (req, res) => {
-  const { name, phone, email, college, city, grad_year, track, campaign_code } = req.body || {};
-  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name is required' });
-  const normPhone = normalizePhone(phone);
-  if (!normPhone) return res.status(400).json({ error: 'A valid 10-digit mobile number is required' });
+router.post('/register', registerLimiter, validate(registerSchema), (req, res, next) => {
+  const { name, phone: normPhone, email, college, city, grad_year, track, campaign_code } = req.body;
 
   const student = db.prepare('SELECT * FROM students WHERE phone = ?').get(normPhone);
   if (student) {
     const att = db.prepare('SELECT * FROM attempts WHERE student_id = ? ORDER BY id DESC LIMIT 1').get(student.id);
     if (att) {
       if (att.status === 'submitted' || new Date(att.expires_at).getTime() <= Date.now()) {
-        return res.status(409).json({ error: 'ALREADY_ATTEMPTED', message: 'This phone number has already been used for the test. One attempt per student.' });
+        return res.status(409).json({
+          success: false,
+          error: 'ALREADY_ATTEMPTED',
+          code: 'ALREADY_ATTEMPTED',
+          message: 'This phone number has already been used for the test. One attempt per student.'
+        });
       }
       // Resume an in-progress attempt
       const cfg = getConfig();
@@ -172,33 +171,58 @@ router.post('/register', (req, res) => {
   try {
     ({ selected, maps } = buildAttemptQuestions());
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    return next(e);
   }
 
-  const ins = db.prepare(`INSERT INTO students
-    (name, phone, email, college, city, grad_year, track, campaign_code)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-  const s = ins.run(
-    String(name).trim(), normPhone,
-    (email || '').trim() || null, (college || '').trim() || null,
-    (city || '').trim() || null, (grad_year || '').trim() || null,
-    (track || '').trim() || null, (campaign_code || '').trim() || null
-  );
+  // Transactionally insert student and attempt to guarantee integrity
+  const executeRegistration = db.transaction(() => {
+    const ins = db.prepare(`INSERT INTO students
+      (name, phone, email, college, city, grad_year, track, campaign_code)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+    const s = ins.run(
+      name, normPhone,
+      email || null, college || null,
+      city || null, grad_year || null,
+      track || null, campaign_code || null
+    );
 
-  const token = randHex(24);
-  const durationMin = parseInt(cfg.duration_minutes, 10) || 30;
-  const expires_at = new Date(Date.now() + durationMin * 60000).toISOString();
-  db.prepare(`INSERT INTO attempts (token, student_id, expires_at, question_ids_json, shuffle_map_json)
-              VALUES (?, ?, ?, ?, ?)`)
-    .run(token, s.lastInsertRowid, expires_at, JSON.stringify(selected), JSON.stringify(maps));
+    const token = randHex(24);
+    const durationMin = parseInt(cfg.duration_minutes, 10) || 30;
+    const expires_at = new Date(Date.now() + durationMin * 60000).toISOString();
+    db.prepare(`INSERT INTO attempts (token, student_id, expires_at, question_ids_json, shuffle_map_json)
+                VALUES (?, ?, ?, ?, ?)`)
+      .run(token, s.lastInsertRowid, expires_at, JSON.stringify(selected), JSON.stringify(maps));
 
-  res.json({ token, resumed: false, expires_at, duration_minutes: durationMin, question_count: selected.length, test_title: cfg.test_title });
+    return { token, expires_at, durationMin };
+  });
+
+  try {
+    const result = executeRegistration();
+    res.json({
+      token: result.token,
+      resumed: false,
+      expires_at: result.expires_at,
+      duration_minutes: result.durationMin,
+      question_count: selected.length,
+      test_title: cfg.test_title
+    });
+  } catch (err) {
+    if (err && err.message && err.message.includes('UNIQUE constraint failed: students.phone')) {
+      return res.status(409).json({
+        success: false,
+        error: 'ALREADY_ATTEMPTED',
+        code: 'ALREADY_ATTEMPTED',
+        message: 'This phone number has already been used for the test. One attempt per student.'
+      });
+    }
+    next(err);
+  }
 });
 
 // Fetch attempt + questions (answers and test cases are NEVER sent)
-router.get('/attempt/:token', (req, res) => {
+router.get('/attempt/:token', validate({ params: attemptTokenParamSchema }), (req, res, next) => {
   const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
-  if (!att) return res.status(404).json({ error: 'Attempt not found' });
+  if (!att) return next(new NotFoundError('Attempt not found'));
   const student = db.prepare('SELECT * FROM students WHERE id = ?').get(att.student_id);
   const cfg = getConfig();
   const qids = JSON.parse(att.question_ids_json || '[]');
@@ -227,20 +251,20 @@ router.get('/attempt/:token', (req, res) => {
   const payload = {
     test_title: cfg.test_title,
     brand_name: cfg.brand_name,
-    student_name: student.name,
+    student_name: student ? student.name : '',
     status: att.status,
     expires_at: att.expires_at,
     tab_switches: att.tab_switches,
     questions
   };
-  if (att.status === 'submitted') Object.assign(payload, resultSummary(att, student.name));
+  if (att.status === 'submitted') Object.assign(payload, resultSummary(att, student ? student.name : ''));
   res.json(payload);
 });
 
 // Heartbeat: persist tab-switch count during the test
-router.post('/attempt/:token/heartbeat', (req, res) => {
+router.post('/attempt/:token/heartbeat', validate({ params: attemptTokenParamSchema, body: heartbeatSchema }), (req, res, next) => {
   const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
-  if (!att) return res.status(404).json({ error: 'Attempt not found' });
+  if (!att) return next(new NotFoundError('Attempt not found'));
   if (att.status !== 'started') return res.json({ ok: true });
   const n = parseInt(req.body && req.body.tabSwitches, 10);
   if (Number.isFinite(n) && n > att.tab_switches) {
@@ -249,12 +273,20 @@ router.post('/attempt/:token/heartbeat', (req, res) => {
   res.json({ ok: true });
 });
 
-// Submit + grade (idempotent)
-router.post('/attempt/:token/submit', async (req, res) => {
+// Submit + grade (idempotent + concurrency locked)
+router.post('/attempt/:token/submit', submitLimiter, validate({ params: attemptTokenParamSchema, body: submitSchema }), asyncHandler(async (req, res, next) => {
   const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
-  if (!att) return res.status(404).json({ error: 'Attempt not found' });
+  if (!att) return next(new NotFoundError('Attempt not found'));
   const student = db.prepare('SELECT * FROM students WHERE id = ?').get(att.student_id);
-  if (att.status === 'submitted') return res.json(resultSummary(att, student.name));
+  if (att.status === 'submitted') return res.json(resultSummary(att, student ? student.name : ''));
+
+  // Atomic state lock: transitions 'started' -> 'grading'
+  const lock = db.prepare("UPDATE attempts SET status = 'grading' WHERE id = ? AND status = 'started'").run(att.id);
+  if (lock.changes === 0) {
+    // Another concurrent submission already acquired the grading lock or completed
+    const current = db.prepare('SELECT * FROM attempts WHERE id = ?').get(att.id);
+    return res.json(resultSummary(current, student ? student.name : ''));
+  }
 
   const body = req.body || {};
   const answers = body.answers || {};
@@ -316,17 +348,17 @@ router.post('/attempt/:token/submit', async (req, res) => {
   );
 
   const updated = db.prepare('SELECT * FROM attempts WHERE id = ?').get(att.id);
-  const summary = resultSummary(updated, student.name);
+  const summary = resultSummary(updated, student ? student.name : '');
   summary.detail = detail;
   res.json(summary);
-});
+}));
 
 // Download the branded PDF certificate
-router.get('/certificate/:certificateId', async (req, res) => {
+router.get('/certificate/:certificateId', certificateLimiter, validate({ params: certificateParamSchema }), asyncHandler(async (req, res, next) => {
   const att = db.prepare(`SELECT a.*, s.name AS student_name FROM attempts a
                           JOIN students s ON s.id = a.student_id
                           WHERE a.certificate_id = ? AND a.status = 'submitted'`).get(req.params.certificateId);
-  if (!att) return res.status(404).json({ error: 'Certificate not found' });
+  if (!att) return next(new NotFoundError('Certificate not found'));
   const cfg = getConfig();
   try {
     const pdf = await generateCertificate({
@@ -341,8 +373,8 @@ router.get('/certificate/:certificateId', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${att.certificate_id}.pdf"`);
     res.send(pdf);
   } catch (e) {
-    res.status(500).json({ error: 'Failed to generate certificate' });
+    next(new AppError('Failed to generate certificate', 500, 'CERTIFICATE_GENERATION_FAILED'));
   }
-});
+}));
 
 module.exports = router;

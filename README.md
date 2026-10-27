@@ -17,21 +17,21 @@ An admin panel manages the question bank, test configuration, results, and per-c
 - **Question types**: MCQ (single-correct, auto-graded) + code-writing questions graded
   against hidden test cases via **Judge0** (server-side; keys never reach the browser)
 - **Scholarship tiers**: configurable slabs, defaults 90%+→100%, 75–89%→50%, 60–74%→25%, 40–59%→10%
-- **Admin panel** (token auth): question bank CRUD, test config, results table with filters,
-  CSV export, per-college batch skill reports, Judge0 status notice
+- **Admin panel & RBAC**: JWT + session authentication via `jose`, bcrypt password hashing, 5 distinct roles (`SUPER_ADMIN`, `ORG_ADMIN`, `EXAM_MANAGER`, `EVALUATOR`, `VIEWER`), multi-tenant organization scoping, audit logging, question bank CRUD, test config, results table with filters, CSV export, per-college batch skill reports, Judge0 status notice
 - **Seed data**: 53 sample questions — 15 aptitude, 30 technical (output prediction,
   bug-fix MCQ, code completion, CS fundamentals), 8 Judge0 coding questions — all marked `SAMPLE`
 
 ## Quick start
 
 ```bash
-cp .env.example .env        # then edit: set ADMIN_TOKEN (or one is generated for you)
+cp .env.example .env        # then edit: set AUTH_SECRET (or one is generated for local dev)
 npm install
+npm run bootstrap:admin     # provisions your initial Super Admin credentials
 npm start                   # http://localhost:3000
 ```
 
 - Student: http://localhost:3000/
-- Admin: http://localhost:3000/admin.html (paste the `ADMIN_TOKEN`)
+- Admin: http://localhost:3000/admin.html (log in with your administrative credentials)
 
 ## Stack
 
@@ -47,16 +47,19 @@ PDFKit (certificates) · Judge0 for code execution · Docker-ready.
 ## Project layout
 
 ```
-server.js            Express entry (static frontend + API)
-src/
-  db.js              SQLite schema + config store
-  seed.js            53 sample questions (15 aptitude / 30 technical / 8 coding)
-  judge0.js          Judge0 adapter (RapidAPI + self-hosted CE)
-  certificate.js     PDFKit certificate generator
-  routes-public.js   register / attempt / submit / certificate
-  routes-admin.js    token-auth admin API (questions, config, results, reports)
-public/              vanilla JS frontend (index, instructions, test, result, admin)
-test/selftest.js     full self-test harness
+backend/
+  server.js          Express entry point
+  src/
+    app.js           Express app wiring & static serving
+    config/          env and configuration loaders
+    data/seed.js     53 sample questions (15 aptitude / 30 technical / 8 coding)
+    db/              SQLite schema + config store (better-sqlite3)
+    middleware/      Admin token authentication
+    routes/          Public & Admin REST endpoints
+    services/        Certificate generator & Judge0 code runner
+frontend/            Vanilla JS frontend (index, instructions, test, result, admin)
+data/                SQLite database file location (aspire.db)
+test/selftest.js     Full self-test harness (50+ assertions)
 Dockerfile
 docker-compose.yml
 ```

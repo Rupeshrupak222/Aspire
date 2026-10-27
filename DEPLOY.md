@@ -5,8 +5,9 @@
 ```bash
 cd aspire-test-platform
 cp .env.example .env
-# edit .env — at minimum set ADMIN_TOKEN (a random one is generated if you skip this)
+# edit .env — at minimum set AUTH_SECRET (a random one is generated if you skip this in dev)
 npm install
+npm run bootstrap:admin -- --email=admin@adyapan.internal --password=YourPassword
 npm start
 ```
 
@@ -20,8 +21,10 @@ questions are seeded automatically (15 aptitude · 30 technical · 8 coding).
 ## 2. Docker deploy (recommended for the server)
 
 ```bash
-cp .env.example .env   # fill in ADMIN_TOKEN + Judge0 vars (below)
+cp .env.example .env   # fill in AUTH_SECRET + Judge0 vars (below)
 docker compose up -d --build
+# provision super admin inside the container
+docker compose exec app npm run bootstrap:admin -- --email=admin@adyapan.internal --password=YourPassword
 ```
 
 - `docker-compose.yml` persists `./data` (the SQLite file) across restarts.
@@ -53,7 +56,9 @@ server {
 |---|---|---|---|
 | `PORT` | no | `3000` | HTTP port |
 | `DB_PATH` | no | `./data/aspire.db` | SQLite file (persist with a volume) |
-| `ADMIN_TOKEN` | **yes (prod)** | generated+printed | Token for `/api/admin/*` (`x-admin-token` header). Generate: `openssl rand -hex 24` |
+| `AUTH_SECRET` | **yes (prod)** | generated (dev only) | Secret key for JWT signing & session tokens. Generate: `openssl rand -hex 32` |
+| `INITIAL_ADMIN_EMAIL` | no | empty | Email for initial Super Admin creation |
+| `INITIAL_ADMIN_PASSWORD` | no | empty | Password for initial Super Admin creation |
 | `JUDGE0_ENDPOINT` | for code Qs | empty (disabled) | Judge0 base URL, no trailing slash |
 | `JUDGE0_API_KEY` | RapidAPI | empty | RapidAPI key (or bearer token for custom setups) |
 | `JUDGE0_RAPIDAPI_HOST` | RapidAPI | empty | e.g. `judge0-ce.p.rapidapi.com` |
@@ -102,7 +107,8 @@ admin panel. Common ids: 71 Python 3, 62 Java, 63 JavaScript (Node), 54 C++ (GCC
 
 ## 5. Going live checklist
 
-- [ ] `ADMIN_TOKEN` set to a strong random value; stored in the team's secret manager
+- [ ] `AUTH_SECRET` set to a strong random 256-bit secret; stored in the team's secret manager
+- [ ] Initial Super Admin created via `npm run bootstrap:admin` or `INITIAL_ADMIN_*` variables
 - [ ] Judge0 configured (A or B above) and verified with a real code submission
 - [ ] Sample questions reviewed: keep, edit, or delete rows with `is_sample=1`
        (admin panel shows the SAMPLE badge; or `DELETE FROM questions WHERE is_sample=1`)

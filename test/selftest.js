@@ -7,7 +7,8 @@ const path = require('path');
 const os = require('os');
 const PORT = 3210;
 const DB = path.join(os.tmpdir(), 'aspire-selftest.db');
-const ADMIN = 'selftest-admin-token';
+const ADMIN_EMAIL = 'selftest-admin@adyapan.internal';
+const ADMIN_PASSWORD = 'SelfTestPassword123!';
 const BASE = `http://127.0.0.1:${PORT}`;
 
 let failures = 0;
@@ -25,7 +26,7 @@ async function api(p, opts = {}) {
   try { data = JSON.parse(body); } catch { data = { _raw: body }; }
   return { status: r.status, data, raw: body, headers: r.headers };
 }
-const adminH = { 'x-admin-token': ADMIN };
+let adminH = {};
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function waitForServer(proc) {
@@ -47,7 +48,14 @@ async function main() {
   console.log('[selftest] starting server…');
   const proc = spawn('node', ['backend/server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(PORT), DB_PATH: DB, ADMIN_TOKEN: ADMIN }
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      DB_PATH: DB,
+      AUTH_SECRET: 'selftest-auth-secret-32-chars-long!',
+      INITIAL_ADMIN_EMAIL: ADMIN_EMAIL,
+      INITIAL_ADMIN_PASSWORD: ADMIN_PASSWORD
+    }
   });
   proc.stdout.on('data', (d) => process.stdout.write('[srv] ' + d));
   proc.stderr.on('data', (d) => process.stderr.write('[srv-err] ' + d));
@@ -184,6 +192,19 @@ async function main() {
   {
     const noAuth = await api('/api/admin/questions');
     ok('admin without token -> 401', noAuth.status === 401);
+
+    // Verify old admin token fails
+    const oldAuth = await api('/api/admin/questions', { headers: { 'x-admin-token': 'old-admin-token' } });
+    ok('admin with old admin token -> 401', oldAuth.status === 401);
+
+    // Login to obtain proper Bearer token
+    const login = await api('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+    });
+    ok('admin login 200', login.status === 200 && !!login.data.data.token);
+    adminH = { 'Authorization': `Bearer ${login.data.data.token}` };
+
     const list = await api('/api/admin/questions', { headers: adminH });
     ok('admin list 200', list.status === 200);
     ok('53 seeded sample questions', list.data.length === 53, `got ${list.data.length}`);
@@ -252,7 +273,7 @@ async function main() {
     ok('results filter by college', res.status === 200 && res.data.length === 2 &&
       res.data.some((r) => r.name === 'Alice Tester') && res.data.some((r) => r.name === 'Carol Late'));
 
-    const csvRes = await fetch(`${BASE}/api/admin/results.csv`, { headers: { 'x-admin-token': ADMIN } });
+    const csvRes = await fetch(`${BASE}/api/admin/results.csv`, { headers: adminH });
     const csv = await csvRes.text();
     const lines = csv.trim().split('\n');
     ok('CSV downloads', csvRes.status === 200);

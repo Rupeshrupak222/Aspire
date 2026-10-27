@@ -1,0 +1,151 @@
+// Centralized Role-Based Access Control (RBAC) definitions and permission matrix.
+
+const ROLES = Object.freeze({
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  ORG_ADMIN: 'ORG_ADMIN',
+  EXAM_MANAGER: 'EXAM_MANAGER',
+  EVALUATOR: 'EVALUATOR',
+  VIEWER: 'VIEWER'
+});
+
+const ROLE_DISPLAY_NAMES = Object.freeze({
+  [ROLES.SUPER_ADMIN]: 'Super Admin',
+  [ROLES.ORG_ADMIN]: 'Organization Admin',
+  [ROLES.EXAM_MANAGER]: 'Exam Manager',
+  [ROLES.EVALUATOR]: 'Evaluator',
+  [ROLES.VIEWER]: 'Viewer'
+});
+
+const PERMISSIONS = Object.freeze({
+  // Questions
+  QUESTIONS_READ: 'questions.read',
+  QUESTIONS_CREATE: 'questions.create',
+  QUESTIONS_UPDATE: 'questions.update',
+  QUESTIONS_DELETE: 'questions.delete',
+
+  // Exams
+  EXAMS_READ: 'exams.read',
+  EXAMS_CREATE: 'exams.create',
+  EXAMS_UPDATE: 'exams.update',
+  EXAMS_DELETE: 'exams.delete',
+  EXAMS_PUBLISH: 'exams.publish',
+
+  // Results
+  RESULTS_READ: 'results.read',
+  RESULTS_EXPORT: 'results.export',
+
+  // Analytics
+  ANALYTICS_READ: 'analytics.read',
+
+  // Users
+  USERS_READ: 'users.read',
+  USERS_CREATE: 'users.create',
+  USERS_UPDATE: 'users.update',
+  USERS_DISABLE: 'users.disable',
+
+  // Settings
+  SETTINGS_READ: 'settings.read',
+  SETTINGS_UPDATE: 'settings.update',
+
+  // Organizations
+  ORGANIZATIONS_READ: 'organizations.read',
+  ORGANIZATIONS_CREATE: 'organizations.create',
+  ORGANIZATIONS_UPDATE: 'organizations.update'
+});
+
+// Explicit role to permission mapping
+const ROLE_PERMISSIONS = Object.freeze({
+  [ROLES.SUPER_ADMIN]: Object.freeze([
+    PERMISSIONS.QUESTIONS_READ,
+    PERMISSIONS.QUESTIONS_CREATE,
+    PERMISSIONS.QUESTIONS_UPDATE,
+    PERMISSIONS.QUESTIONS_DELETE,
+    PERMISSIONS.EXAMS_READ,
+    PERMISSIONS.EXAMS_CREATE,
+    PERMISSIONS.EXAMS_UPDATE,
+    PERMISSIONS.EXAMS_DELETE,
+    PERMISSIONS.EXAMS_PUBLISH,
+    PERMISSIONS.RESULTS_READ,
+    PERMISSIONS.RESULTS_EXPORT,
+    PERMISSIONS.ANALYTICS_READ,
+    PERMISSIONS.USERS_READ,
+    PERMISSIONS.USERS_CREATE,
+    PERMISSIONS.USERS_UPDATE,
+    PERMISSIONS.USERS_DISABLE,
+    PERMISSIONS.SETTINGS_READ,
+    PERMISSIONS.SETTINGS_UPDATE,
+    PERMISSIONS.ORGANIZATIONS_READ,
+    PERMISSIONS.ORGANIZATIONS_CREATE,
+    PERMISSIONS.ORGANIZATIONS_UPDATE
+  ]),
+
+  [ROLES.ORG_ADMIN]: Object.freeze([
+    PERMISSIONS.QUESTIONS_READ,
+    PERMISSIONS.QUESTIONS_CREATE,
+    PERMISSIONS.QUESTIONS_UPDATE,
+    PERMISSIONS.QUESTIONS_DELETE,
+    PERMISSIONS.EXAMS_READ,
+    PERMISSIONS.EXAMS_CREATE,
+    PERMISSIONS.EXAMS_UPDATE,
+    PERMISSIONS.EXAMS_DELETE,
+    PERMISSIONS.EXAMS_PUBLISH,
+    PERMISSIONS.RESULTS_READ,
+    PERMISSIONS.RESULTS_EXPORT,
+    PERMISSIONS.ANALYTICS_READ,
+    PERMISSIONS.USERS_READ,
+    PERMISSIONS.USERS_CREATE,
+    PERMISSIONS.USERS_UPDATE,
+    PERMISSIONS.USERS_DISABLE,
+    PERMISSIONS.SETTINGS_READ,
+    PERMISSIONS.SETTINGS_UPDATE,
+    PERMISSIONS.ORGANIZATIONS_READ,
+    PERMISSIONS.ORGANIZATIONS_UPDATE
+  ]),
+
+  [ROLES.EXAM_MANAGER]: Object.freeze([
+    PERMISSIONS.QUESTIONS_READ,
+    PERMISSIONS.QUESTIONS_CREATE,
+    PERMISSIONS.QUESTIONS_UPDATE,
+    PERMISSIONS.QUESTIONS_DELETE,
+    PERMISSIONS.EXAMS_READ,
+    PERMISSIONS.EXAMS_CREATE,
+    PERMISSIONS.EXAMS_UPDATE,
+    PERMISSIONS.EXAMS_DELETE,
+    PERMISSIONS.EXAMS_PUBLISH,
+    PERMISSIONS.RESULTS_READ,
+    PERMISSIONS.ANALYTICS_READ
+  ]),
+
+  [ROLES.EVALUATOR]: Object.freeze([
+    PERMISSIONS.RESULTS_READ,
+    PERMISSIONS.ANALYTICS_READ
+  ]),
+
+  [ROLES.VIEWER]: Object.freeze([
+    PERMISSIONS.RESULTS_READ
+  ])
+});
+
+function hasPermission(role, permission) {
+  if (!role || !permission) return false;
+  const perms = ROLE_PERMISSIONS[role];
+  return Array.isArray(perms) && perms.includes(permission);
+}
+
+function getRolePermissions(role) {
+  return ROLE_PERMISSIONS[role] || [];
+}
+
+function isValidRole(role) {
+  return Object.values(ROLES).includes(role);
+}
+
+module.exports = {
+  ROLES,
+  ROLE_DISPLAY_NAMES,
+  PERMISSIONS,
+  ROLE_PERMISSIONS,
+  hasPermission,
+  getRolePermissions,
+  isValidRole
+};

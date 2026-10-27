@@ -8,11 +8,32 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
-    "test": "node test/selftest.js"
+    "test": "node test/selftest.js && node test/validation-and-errors.test.js && node test/security-hardening.test.js && node test/auth-rbac.test.js && node test/database-hardening.test.js && node test/question-bank.test.js",
+    "test:val": "node test/validation-and-errors.test.js",
+    "test:sec": "node test/security-hardening.test.js",
+    "test:auth": "node test/auth-rbac.test.js",
+    "test:db": "node test/database-hardening.test.js",
+    "test:qb": "node test/question-bank.test.js",
+    "db:backup": "node backend/src/scripts/backup.js",
+    "db:restore": "node backend/src/scripts/restore.js",
+    "db:migrate": "node backend/src/scripts/migrate.js",
+    "bootstrap:admin": "node backend/src/scripts/bootstrap-admin.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
+    "cors": "^2.8.6",
     "express": "^4.21.2",
-    "pdfkit": "^0.17.1"
+    "express-rate-limit": "^8.7.1",
+    "fuse.js": "^7.5.0",
+    "helmet": "^8.3.0",
+    "jose": "^6.2.13",
+    "papaparse": "^5.7.0",
+    "pdfkit": "^0.17.1",
+    "pino": "^10.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "pino-pretty": "^13.2.0"
   }
 }

@@ -1,39 +1,193 @@
-// Admin panel logic. Token stored in localStorage.
-const ADMIN_KEY = 'aspire_admin_token';
-function adminToken() { return localStorage.getItem(ADMIN_KEY) || ''; }
+// Aspire Admin Panel — Authentication, RBAC, and Role-Aware Navigation.
+const TOKEN_KEY = 'aspire_auth_token';
+const USER_KEY = 'aspire_auth_user';
+
+let currentUser = null;
+
+function getAuthToken() {
+  return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+function setSession(token, user) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+
+  if (user) {
+    currentUser = user;
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } else {
+    currentUser = null;
+    localStorage.removeItem(USER_KEY);
+  }
+}
+
+function loadStoredUser() {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (raw) currentUser = JSON.parse(raw);
+  } catch {
+    currentUser = null;
+  }
+}
 
 async function aapi(path, opts = {}) {
-  const res = await fetch(path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken(), ...(opts.headers || {}) }
-  });
+  const token = getAuthToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...(opts.headers || {})
+  };
+
+  const res = await fetch(path, { ...opts, headers });
+
+  if (res.status === 401) {
+    // Session expired or invalid
+    setSession(null, null);
+    gate();
+    showErr('loginErr', 'Session expired. Please log in again.');
+    throw new Error('Authentication required');
+  }
+
+  if (res.status === 403) {
+    alert('Access forbidden: You do not have permission to perform this action.');
+    throw new Error('Forbidden');
+  }
+
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  if (!res.ok) {
+    throw new Error(data.message || data.error || `Request failed (${res.status})`);
+  }
   return data;
 }
 
-function gate() {
-  const has = !!adminToken();
-  document.getElementById('loginBox').style.display = has ? 'none' : 'block';
-  document.getElementById('adminBox').style.display = has ? 'block' : 'none';
-  if (has) { loadJudge0(); loadQuestions(); loadConfig(); }
+function hasPermission(permission) {
+  if (!currentUser || !currentUser.permissions) return false;
+  return currentUser.permissions.includes(permission);
 }
 
-document.getElementById('loginBtn').addEventListener('click', () => {
-  const t = document.getElementById('adminTokenInput').value.trim();
-  if (!t) return;
-  localStorage.setItem(ADMIN_KEY, t);
-  gate();
+function applyRoleAwareUI() {
+  if (!currentUser) return;
+
+  const role = currentUser.role || '';
+  const permissions = currentUser.permissions || [];
+
+  // Top bar updates
+  document.getElementById('userNameDisplay').textContent = `${currentUser.name} (${currentUser.email})`;
+  const badge = document.getElementById('roleBadge');
+  badge.textContent = role.replace('_', ' ');
+  badge.style.display = 'inline-block';
+  document.getElementById('userMenu').style.display = 'flex';
+
+  // Tab visibility
+  const canQuestions = permissions.includes('questions.read');
+  const canConfig = permissions.includes('settings.read');
+  const canResults = permissions.includes('results.read');
+  const canAnalytics = permissions.includes('analytics.read');
+  const canUsers = permissions.includes('users.read');
+  const canExport = permissions.includes('results.export');
+
+  document.getElementById('tab-questions').style.display = canQuestions ? 'inline-block' : 'none';
+  document.getElementById('tab-config').style.display = canConfig ? 'inline-block' : 'none';
+  document.getElementById('tab-results').style.display = canResults ? 'inline-block' : 'none';
+  document.getElementById('tab-report').style.display = canAnalytics ? 'inline-block' : 'none';
+  document.getElementById('tab-users').style.display = canUsers ? 'inline-block' : 'none';
+
+  // Question bank mutation controls
+  const addQBtn = document.getElementById('addQBtn');
+  if (addQBtn) addQBtn.style.display = permissions.includes('questions.create') ? 'inline-block' : 'none';
+
+  // Export CSV button
+  const csvBtn = document.getElementById('csvBtn');
+  if (csvBtn) csvBtn.style.display = canExport ? 'inline-block' : 'none';
+
+  // Super Admin role option in user form
+  const superOpt = document.getElementById('u_role_super');
+  if (superOpt) superOpt.style.display = role === 'SUPER_ADMIN' ? 'block' : 'none';
+
+  // Config slabs restriction (Org admin has limited config)
+  const slabsSection = document.getElementById('slabsSection');
+  if (slabsSection) {
+    slabsSection.style.display = role === 'SUPER_ADMIN' ? 'block' : 'none';
+  }
+
+  // Switch to default permissible tab
+  if (canQuestions) switchTab('questions');
+  else if (canResults) switchTab('results');
+  else if (canAnalytics) switchTab('report');
+  else if (canConfig) switchTab('config');
+  else if (canUsers) switchTab('users');
+}
+
+function gate() {
+  const has = !!getAuthToken();
+  document.getElementById('loginBox').style.display = has ? 'none' : 'block';
+  document.getElementById('adminBox').style.display = has ? 'block' : 'none';
+
+  if (!has) {
+    document.getElementById('userMenu').style.display = 'none';
+    document.getElementById('roleBadge').style.display = 'none';
+  } else {
+    loadStoredUser();
+    applyRoleAwareUI();
+    loadJudge0();
+  }
+}
+
+// Login
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const email = document.getElementById('adminEmailInput').value.trim();
+  const password = document.getElementById('adminPasswordInput').value;
+  const errBox = document.getElementById('loginErr');
+  errBox.style.display = 'none';
+
+  if (!email || !password) {
+    errBox.textContent = 'Please enter both email and password.';
+    errBox.style.display = 'block';
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.message || data.error || 'Login failed');
+    }
+
+    setSession(data.data.token, data.data.user);
+    document.getElementById('adminPasswordInput').value = '';
+    gate();
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+  }
 });
-document.getElementById('logoutBtn').addEventListener('click', () => {
-  localStorage.removeItem(ADMIN_KEY);
+
+// Logout
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  try {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`
+      }
+    });
+  } catch {}
+  setSession(null, null);
   gate();
 });
 
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpane').forEach((p) => p.style.display = p.id === `pane-${name}` ? 'block' : 'none');
+  if (name === 'questions') loadQuestions();
+  if (name === 'config') loadConfig();
   if (name === 'results') loadResults();
+  if (name === 'users') loadUsers();
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
@@ -46,7 +200,7 @@ async function loadJudge0() {
       el.textContent = `Judge0 connected (${s.mode}: ${s.endpoint}). Code questions are live.`;
     } else {
       el.className = 'err'; el.style.display = 'block';
-      el.textContent = 'Judge0 NOT configured — code-writing questions are auto-excluded from tests. Set JUDGE0_ENDPOINT (and key) in .env to enable.';
+      el.textContent = 'Judge0 NOT configured — code-writing questions are auto-excluded from tests.';
     }
   } catch (e) { /* ignore */ }
 }
@@ -54,64 +208,226 @@ async function loadJudge0() {
 /* ---------- Questions ---------- */
 let editingId = null;
 
+/* ---------- Question Bank 2.0 ---------- */
+let editingId = null;
+let qCurrentPage = 1;
+let qTotalPages = 1;
+
 async function loadQuestions() {
-  const qs = await aapi('/api/admin/questions');
+  if (!hasPermission('questions.read')) return;
+
+  const search = document.getElementById('q_search')?.value.trim() || '';
+  const status = document.getElementById('q_filter_status')?.value || 'ALL';
+  const difficulty = document.getElementById('q_filter_difficulty')?.value || 'ALL';
+  const type = document.getElementById('q_filter_type')?.value || 'ALL';
+  const category = document.getElementById('q_filter_category')?.value || 'ALL';
+
+  const params = new URLSearchParams({
+    page: String(qCurrentPage),
+    limit: '15',
+    paginate: 'true'
+  });
+  if (search) params.append('search', search);
+  if (status !== 'ALL') params.append('status', status);
+  if (difficulty !== 'ALL') params.append('difficulty', difficulty);
+  if (type !== 'ALL') params.append('type', type);
+  if (category !== 'ALL') params.append('category', category);
+
+  const res = await aapi(`/api/admin/questions?${params.toString()}`);
+  const items = Array.isArray(res) ? res : (res.data?.items || []);
+  const pagination = res.data?.pagination || null;
+
   const tb = document.getElementById('qBody');
-  tb.innerHTML = qs.map((q) => `<tr>
-    <td>${q.id}</td><td>${esc(q.type)}</td><td>${esc(q.category)}</td>
-    <td>${esc(q.question_text.slice(0, 60))}${q.question_text.length > 60 ? '…' : ''}</td>
-    <td>${q.marks}</td><td>${q.is_sample ? 'SAMPLE' : ''}</td>
-    <td><button class="btn small ghost" onclick="editQ(${q.id})">Edit</button>
-        <button class="btn small ghost" onclick="delQ(${q.id})">Delete</button></td>
-  </tr>`).join('');
-  window._qs = Object.fromEntries(qs.map((q) => [q.id, q]));
+  const canUpdate = hasPermission('questions.update');
+  const canDelete = hasPermission('questions.delete');
+
+  if (items.length === 0) {
+    tb.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No questions found matching the selected filters.</td></tr>`;
+  } else {
+    tb.innerHTML = items.map((q) => {
+      const scope = q.organization_id ? `Org #${q.organization_id}` : (q.is_sample ? 'Sample' : 'Platform');
+      const st = (q.status || 'PUBLISHED').toUpperCase();
+      const diff = (q.difficulty || 'MEDIUM').toUpperCase();
+      const statusClass = `status-${st.toLowerCase()}`;
+      const diffClass = `diff-${diff.toLowerCase()}`;
+
+      const actions = [];
+      actions.push(`<button class="btn small ghost" onclick="previewQ(${q.id})" title="Preview as candidate">Preview</button>`);
+      if (canUpdate) {
+        actions.push(`<button class="btn small ghost" onclick="editQ(${q.id})">Edit</button>`);
+        if (st !== 'PUBLISHED') {
+          actions.push(`<button class="btn small ghost" style="color:var(--ok)" onclick="publishQ(${q.id})">Publish</button>`);
+        } else {
+          actions.push(`<button class="btn small ghost" style="color:var(--bad)" onclick="archiveQ(${q.id})">Archive</button>`);
+        }
+      }
+      if (canDelete) {
+        actions.push(`<button class="btn small ghost" onclick="delQ(${q.id})">Delete</button>`);
+      }
+
+      const titleDisplay = q.title ? `<strong>${esc(q.title)}</strong><br>` : '';
+      const textSnippet = esc(q.question_text.slice(0, 55)) + (q.question_text.length > 55 ? '…' : '');
+
+      return `<tr>
+        <td>${q.id}</td>
+        <td>${titleDisplay}<span style="color:var(--muted);font-size:12px">${textSnippet}</span></td>
+        <td><code>${esc(q.type)}</code></td>
+        <td>${esc(q.category)}</td>
+        <td><span class="diff-badge ${diffClass}">${esc(diff)}</span></td>
+        <td><b>${q.marks}</b></td>
+        <td><span class="status-badge ${statusClass}">${esc(st)}</span></td>
+        <td><small style="color:var(--muted)">v${q.version || 1}</small></td>
+        <td><small>${esc(scope)}</small></td>
+        <td><div style="display:flex;gap:4px;flex-wrap:wrap">${actions.join(' ')}</div></td>
+      </tr>`;
+    }).join('');
+  }
+
+  window._qs = Object.fromEntries(items.map((q) => [q.id, q]));
+
+  // Update pagination controls
+  const pBar = document.getElementById('qPaginationBar');
+  if (pagination) {
+    pBar.style.display = 'flex';
+    qCurrentPage = pagination.page;
+    qTotalPages = pagination.totalPages || 1;
+    document.getElementById('qPageInfo').textContent = `Page ${pagination.page} of ${pagination.totalPages || 1} (${pagination.total} questions)`;
+    document.getElementById('qPrevPageBtn').disabled = qCurrentPage <= 1;
+    document.getElementById('qNextPageBtn').disabled = qCurrentPage >= qTotalPages;
+  } else {
+    pBar.style.display = 'none';
+  }
 }
 
 const QUESTION_CATEGORIES = ['aptitude', 'technical', 'coding'];
 
 function qFormHTML(q) {
-  q = q || { type: 'mcq', category: 'aptitude', marks: 1, options: ['', ''], correct_index: 0 };
+  q = q || {
+    type: 'mcq', category: 'aptitude', marks: 1, difficulty: 'MEDIUM',
+    time_estimate: 120, status: 'DRAFT', options: ['', ''], correct_index: 0
+  };
   const curCat = QUESTION_CATEGORIES.includes(q.category) ? q.category : 'aptitude';
+  const curDiff = ['EASY', 'MEDIUM', 'HARD'].includes(q.difficulty) ? q.difficulty : 'MEDIUM';
+  const curStatus = ['DRAFT', 'REVIEW', 'PUBLISHED', 'ARCHIVED'].includes(q.status) ? q.status : 'DRAFT';
+  const tagsStr = Array.isArray(q.tags) ? q.tags.join(', ') : (q.tags || '');
+
   const opts = (q.options || []).map((o, i) =>
     `<div class="row"><input data-opt="${i}" value="${esc(o)}" placeholder="Option ${i + 1}">
      <label style="margin:0"><input type="radio" name="correct" value="${i}" ${q.correct_index === i ? 'checked' : ''} style="width:auto"> correct</label></div>`).join('');
+
   return `
-    <label>Type</label>
-    <select id="f_type"><option value="mcq" ${q.type === 'mcq' ? 'selected' : ''}>MCQ</option>
-    <option value="code" ${q.type === 'code' ? 'selected' : ''}>Code (Judge0)</option></select>
-    <label>Category</label>
-    <select id="f_cat">${QUESTION_CATEGORIES.map((c) => `<option value="${c}" ${curCat === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-    <div class="hint" style="color:var(--muted);font-size:12px;margin:-6px 0 10px">aptitude + technical are MCQ · coding is code-writing (needs Judge0)</div>
-    <label>Question text</label><textarea id="f_text" rows="4">${esc(q.question_text || '')}</textarea>
-    <div id="mcqFields" style="display:${q.type === 'mcq' ? 'block' : 'none'}">
-      <label>Options (tick the correct one)</label><div id="optList">${opts}</div>
-      <button type="button" class="btn small ghost" id="addOpt">+ Add option</button>
-    </div>
-    <div id="codeFields" style="display:${q.type === 'code' ? 'block' : 'none'}">
-      <label>Starter code</label><textarea id="f_starter" class="code" rows="6">${esc(q.code_starter || '')}</textarea>
-      <label>Judge0 language id (71 = Python 3)</label><input id="f_lang" type="number" value="${q.language_id || 71}">
-      <label>Test cases (JSON array of {"input": "...", "expected": "..."})</label>
-      <textarea id="f_tests" rows="5">${esc(q.test_cases ? JSON.stringify(q.test_cases, null, 1) : '[\n  {"input": "", "expected": ""}\n]')}</textarea>
-    </div>
     <div class="row">
-      <div><label>Marks</label><input id="f_marks" type="number" min="1" value="${q.marks || 1}"></div>
-      <div><label>&nbsp;</label><label style="margin:0"><input id="f_sample" type="checkbox" ${q.is_sample ? 'checked' : ''} style="width:auto"> sample question</label></div>
+      <div style="flex:2">
+        <label>Title</label>
+        <input id="f_title" value="${esc(q.title || '')}" placeholder="Short descriptive title...">
+      </div>
+      <div style="flex:1">
+        <label>Status</label>
+        <select id="f_status">
+          <option value="DRAFT" ${curStatus === 'DRAFT' ? 'selected' : ''}>DRAFT</option>
+          <option value="REVIEW" ${curStatus === 'REVIEW' ? 'selected' : ''}>REVIEW</option>
+          <option value="PUBLISHED" ${curStatus === 'PUBLISHED' ? 'selected' : ''}>PUBLISHED</option>
+          <option value="ARCHIVED" ${curStatus === 'ARCHIVED' ? 'selected' : ''}>ARCHIVED</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Type</label>
+        <select id="f_type">
+          <option value="mcq" ${q.type === 'mcq' ? 'selected' : ''}>MCQ</option>
+          <option value="code" ${q.type === 'code' ? 'selected' : ''}>Code (Judge0)</option>
+        </select>
+      </div>
+      <div>
+        <label>Category</label>
+        <select id="f_cat">${QUESTION_CATEGORIES.map((c) => `<option value="${c}" ${curCat === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      </div>
+      <div>
+        <label>Difficulty</label>
+        <select id="f_diff">
+          <option value="EASY" ${curDiff === 'EASY' ? 'selected' : ''}>Easy</option>
+          <option value="MEDIUM" ${curDiff === 'MEDIUM' ? 'selected' : ''}>Medium</option>
+          <option value="HARD" ${curDiff === 'HARD' ? 'selected' : ''}>Hard</option>
+        </select>
+      </div>
+      <div>
+        <label>Marks</label>
+        <input id="f_marks" type="number" min="1" value="${q.marks || 1}">
+      </div>
+      <div>
+        <label>Time Est. (sec)</label>
+        <input id="f_time" type="number" min="10" value="${q.time_estimate || 120}">
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="flex:1">
+        <label>Topic</label>
+        <input id="f_topic" value="${esc(q.topic || '')}" placeholder="e.g. Data Structures, React">
+      </div>
+      <div style="flex:1">
+        <label>Skill</label>
+        <input id="f_skill" value="${esc(q.skill || '')}" placeholder="e.g. Binary Trees, State Management">
+      </div>
+      <div style="flex:1">
+        <label>Tags (comma-separated)</label>
+        <input id="f_tags" value="${esc(tagsStr)}" placeholder="e.g. tree, dfs, beginner">
+      </div>
+    </div>
+
+    <label style="margin-top:8px">Question text</label>
+    <textarea id="f_text" rows="4" placeholder="Enter full question description...">${esc(q.question_text || '')}</textarea>
+
+    <div id="mcqFields" style="display:${q.type === 'mcq' ? 'block' : 'none'};margin-top:10px">
+      <label>Options (select the single correct answer)</label>
+      <div id="optList">${opts}</div>
+      <button type="button" class="btn small ghost" id="addOpt">+ Add Option</button>
+    </div>
+
+    <div id="codeFields" style="display:${q.type === 'code' ? 'block' : 'none'};margin-top:10px">
+      <div class="row">
+        <div>
+          <label>Language</label>
+          <input id="f_language" value="${esc(q.language || 'python')}" placeholder="e.g. python, javascript">
+        </div>
+        <div>
+          <label>Judge0 Language ID (71 = Python 3)</label>
+          <input id="f_lang" type="number" value="${q.language_id || 71}">
+        </div>
+      </div>
+      <label>Starter code</label>
+      <textarea id="f_starter" class="code" rows="5">${esc(q.code_starter || '')}</textarea>
+      <label>Test cases (JSON array of {"input": "...", "expected": "..."})</label>
+      <textarea id="f_tests" rows="4">${esc(q.test_cases ? JSON.stringify(q.test_cases, null, 1) : '[\n  {"input": "", "expected": ""}\n]')}</textarea>
+    </div>
+
+    <div style="margin-top:12px">
+      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer">
+        <input id="f_sample" type="checkbox" ${q.is_sample ? 'checked' : ''} style="width:auto;margin:0">
+        Mark as public sample question
+      </label>
     </div>`;
 }
 
 function showQForm(q) {
+  if (!hasPermission(q ? 'questions.update' : 'questions.create')) return;
   editingId = q ? q.id : null;
-  document.getElementById('qFormTitle').textContent = q ? `Edit question #${q.id}` : 'Add question';
+  document.getElementById('qFormTitle').textContent = q ? `Edit Question #${q.id}` : 'Add Question';
   document.getElementById('qFormBody').innerHTML = qFormHTML(q);
+  document.getElementById('qDuplicateWarning').style.display = 'none';
+  document.getElementById('qFormErr').style.display = 'none';
   document.getElementById('qForm').style.display = 'block';
+
   document.getElementById('f_type').addEventListener('change', (e) => {
     const t = e.target.value;
     document.getElementById('mcqFields').style.display = t === 'mcq' ? 'block' : 'none';
     document.getElementById('codeFields').style.display = t === 'code' ? 'block' : 'none';
-    // Keep category <-> type consistent: coding is always code-writing.
     const cat = document.getElementById('f_cat');
     cat.value = t === 'code' ? 'coding' : (cat.value === 'coding' ? 'technical' : cat.value);
   });
+
   document.getElementById('f_cat').addEventListener('change', (e) => {
     const c = e.target.value;
     const t = document.getElementById('f_type');
@@ -119,6 +435,7 @@ function showQForm(q) {
     document.getElementById('mcqFields').style.display = c === 'coding' ? 'none' : 'block';
     document.getElementById('codeFields').style.display = c === 'coding' ? 'block' : 'none';
   });
+
   document.getElementById('addOpt').addEventListener('click', () => {
     const list = document.getElementById('optList');
     const i = list.querySelectorAll('[data-opt]').length;
@@ -128,6 +445,34 @@ function showQForm(q) {
       <label style="margin:0"><input type="radio" name="correct" value="${i}" style="width:auto"> correct</label>`;
     list.appendChild(div);
   });
+
+  // Duplicate detection on blur of question text
+  document.getElementById('f_text').addEventListener('blur', async (e) => {
+    const txt = e.target.value.trim();
+    if (txt.length < 15) return;
+    try {
+      const res = await aapi('/api/admin/questions/duplicates', {
+        method: 'POST',
+        body: JSON.stringify({
+          question_text: txt,
+          type: document.getElementById('f_type').value,
+          exclude_id: editingId || undefined
+        })
+      });
+      const data = res.data;
+      const warnBox = document.getElementById('qDuplicateWarning');
+      if (data && data.exactDuplicate) {
+        warnBox.textContent = `Warning: An identical question already exists in your question bank (ID #${data.exactMatch.id}: "${data.exactMatch.title}").`;
+        warnBox.style.display = 'block';
+      } else if (data && data.matches && data.matches.length > 0 && data.matches[0].similarity > 0.8) {
+        warnBox.textContent = `Notice: Similar question found: #${data.matches[0].id} "${data.matches[0].title}" (${Math.round(data.matches[0].similarity * 100)}% match).`;
+        warnBox.style.display = 'block';
+      } else {
+        warnBox.style.display = 'none';
+      }
+    } catch {}
+  });
+
   window.scrollTo({ top: document.getElementById('qForm').offsetTop - 20, behavior: 'smooth' });
 }
 
@@ -137,43 +482,275 @@ document.getElementById('cancelQBtn').addEventListener('click', () => {
   document.getElementById('qForm').style.display = 'none';
   editingId = null;
 });
+
+// Delete or archive question
 window.delQ = async (id) => {
-  if (!confirm(`Delete question #${id}?`)) return;
-  await aapi(`/api/admin/questions/${id}`, { method: 'DELETE' });
+  if (!confirm(`Delete or archive question #${id}?`)) return;
+  const res = await aapi(`/api/admin/questions/${id}`, { method: 'DELETE' });
+  if (res.archived) {
+    alert('This question has historical assessment attempts and was safely ARCHIVED to preserve assessment integrity.');
+  }
   loadQuestions();
 };
 
+// Publish question directly
+window.publishQ = async (id) => {
+  try {
+    await aapi(`/api/admin/questions/${id}/publish`, { method: 'POST' });
+    loadQuestions();
+  } catch (err) {
+    alert(err.message || 'Publishing failed. Please ensure all question fields and options are complete.');
+  }
+};
+
+// Archive question directly
+window.archiveQ = async (id) => {
+  if (!confirm(`Archive question #${id}? Archived questions will not appear in new candidate assessments.`)) return;
+  await aapi(`/api/admin/questions/${id}/archive`, { method: 'POST' });
+  loadQuestions();
+};
+
+// Question Preview Modal
+window.previewQ = async (id) => {
+  try {
+    const res = await aapi(`/api/admin/questions/${id}/preview`);
+    const q = res.data;
+    document.getElementById('previewTitle').textContent = `Preview: ${q.title || 'Question #' + q.id}`;
+
+    let bodyHTML = `
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <span class="diff-badge diff-${(q.difficulty||'medium').toLowerCase()}">${esc(q.difficulty||'MEDIUM')}</span>
+        <span class="status-badge status-${(q.status||'draft').toLowerCase()}">${esc(q.status||'DRAFT')}</span>
+        <span style="font-size:13px;color:var(--muted)">Marks: <b>${q.marks}</b> · Est: <b>${q.time_estimate||120}s</b></span>
+      </div>
+      <div style="font-size:16px;line-height:1.6;margin-bottom:16px;white-space:pre-wrap">${esc(q.question_text)}</div>
+    `;
+
+    if (q.type === 'mcq' && Array.isArray(q.options)) {
+      bodyHTML += `<div style="margin-top:12px">`;
+      q.options.forEach((opt, idx) => {
+        bodyHTML += `
+          <label class="opt" style="margin:8px 0;display:flex;align-items:center;gap:10px">
+            <input type="radio" name="preview_choice" disabled style="width:auto;margin:0">
+            <span>${esc(opt)}</span>
+          </label>`;
+      });
+      bodyHTML += `</div>`;
+    } else if (q.type === 'code') {
+      bodyHTML += `
+        <div style="margin-top:12px">
+          <label style="font-size:12px;color:var(--muted)">Candidate Starter Code:</label>
+          <pre class="q" style="font-family:monospace">${esc(q.code_starter || '# Starter code')}</pre>
+        </div>
+      `;
+      if (q.sample_test_case) {
+        bodyHTML += `
+          <div style="margin-top:12px;font-size:13px;background:#F9FAFB;padding:10px;border-radius:6px">
+            <b>Sample Test Case:</b><br>
+            <code>Input: ${esc(q.sample_test_case.input)}</code><br>
+            <code>Expected: ${esc(q.sample_test_case.expected)}</code>
+          </div>
+        `;
+      }
+    }
+
+    document.getElementById('previewBody').innerHTML = bodyHTML;
+    document.getElementById('previewModal').style.display = 'flex';
+  } catch (err) {
+    alert(err.message || 'Could not load preview.');
+  }
+};
+
+document.getElementById('closePreviewBtn').addEventListener('click', () => {
+  document.getElementById('previewModal').style.display = 'none';
+});
+
+// Save question (Add / Edit)
 document.getElementById('saveQBtn').addEventListener('click', async () => {
   const type = document.getElementById('f_type').value;
+  const rawTags = document.getElementById('f_tags').value;
+  const tags = rawTags ? rawTags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : [];
+
   const payload = {
     type,
     category: document.getElementById('f_cat').value,
+    title: document.getElementById('f_title').value.trim() || undefined,
     question_text: document.getElementById('f_text').value,
+    difficulty: document.getElementById('f_diff').value,
+    topic: document.getElementById('f_topic').value.trim() || null,
+    skill: document.getElementById('f_skill').value.trim() || null,
     marks: parseInt(document.getElementById('f_marks').value, 10) || 1,
+    time_estimate: parseInt(document.getElementById('f_time').value, 10) || 120,
+    tags,
+    status: document.getElementById('f_status').value,
     is_sample: document.getElementById('f_sample').checked
   };
+
   if (type === 'mcq') {
     payload.options = [...document.querySelectorAll('[data-opt]')].map((el) => el.value);
     const checked = document.querySelector('input[name="correct"]:checked');
     payload.correct_index = checked ? parseInt(checked.value, 10) : 0;
   } else {
+    payload.language = document.getElementById('f_language').value.trim() || 'python';
     payload.code_starter = document.getElementById('f_starter').value;
     payload.language_id = parseInt(document.getElementById('f_lang').value, 10) || 71;
     try {
       payload.test_cases = JSON.parse(document.getElementById('f_tests').value);
-    } catch { showErr('qFormErr', 'Test cases must be valid JSON'); return; }
+    } catch {
+      showErr('qFormErr', 'Test cases must be valid JSON');
+      return;
+    }
   }
+
   try {
-    if (editingId) await aapi(`/api/admin/questions/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
-    else await aapi('/api/admin/questions', { method: 'POST', body: JSON.stringify(payload) });
+    if (editingId) {
+      await aapi(`/api/admin/questions/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+    } else {
+      await aapi('/api/admin/questions', { method: 'POST', body: JSON.stringify(payload) });
+    }
     document.getElementById('qForm').style.display = 'none';
     editingId = null;
     loadQuestions();
-  } catch (e) { showErr('qFormErr', e.message); }
+  } catch (e) {
+    showErr('qFormErr', e.message);
+  }
 });
+
+// Pagination event listeners
+document.getElementById('qPrevPageBtn').addEventListener('click', () => {
+  if (qCurrentPage > 1) {
+    qCurrentPage--;
+    loadQuestions();
+  }
+});
+document.getElementById('qNextPageBtn').addEventListener('click', () => {
+  if (qCurrentPage < qTotalPages) {
+    qCurrentPage++;
+    loadQuestions();
+  }
+});
+
+// Filter apply & reset
+document.getElementById('qFilterApplyBtn').addEventListener('click', () => {
+  qCurrentPage = 1;
+  loadQuestions();
+});
+document.getElementById('qFilterResetBtn').addEventListener('click', () => {
+  document.getElementById('q_search').value = '';
+  document.getElementById('q_filter_status').value = 'ALL';
+  document.getElementById('q_filter_difficulty').value = 'ALL';
+  document.getElementById('q_filter_type').value = 'ALL';
+  document.getElementById('q_filter_category').value = 'ALL';
+  qCurrentPage = 1;
+  loadQuestions();
+});
+
+// Export CSV handler
+document.getElementById('exportCsvBtn').addEventListener('click', async () => {
+  try {
+    const token = getAuthToken();
+    const res = await fetch('/api/admin/questions/export', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error('Export failed');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aspire-questions-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch (err) {
+    alert(err.message || 'Export error');
+  }
+});
+
+// Import CSV Modal handlers
+document.getElementById('importCsvBtn').addEventListener('click', () => {
+  document.getElementById('csvTextInput').value = '';
+  document.getElementById('csvFileInput').value = '';
+  document.getElementById('csvPreviewOutput').style.display = 'none';
+  document.getElementById('csvCommitBtn').style.display = 'none';
+  document.getElementById('csvErr').style.display = 'none';
+  document.getElementById('csvImportModal').style.display = 'flex';
+});
+
+document.getElementById('closeCsvModalBtn').addEventListener('click', () => {
+  document.getElementById('csvImportModal').style.display = 'none';
+});
+document.getElementById('csvCancelBtn').addEventListener('click', () => {
+  document.getElementById('csvImportModal').style.display = 'none';
+});
+
+document.getElementById('csvFileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    document.getElementById('csvTextInput').value = evt.target.result;
+  };
+  reader.readAsText(file);
+});
+
+// CSV Preview
+document.getElementById('csvPreviewBtn').addEventListener('click', async () => {
+  const csv = document.getElementById('csvTextInput').value.trim();
+  const errBox = document.getElementById('csvErr');
+  errBox.style.display = 'none';
+  if (!csv) {
+    errBox.textContent = 'Please paste or upload CSV data first.';
+    errBox.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await aapi('/api/admin/questions/import/preview', {
+      method: 'POST',
+      body: JSON.stringify({ csv })
+    });
+    const d = res.data;
+    const out = document.getElementById('csvPreviewOutput');
+    out.innerHTML = `
+      <b>CSV Preview Analysis:</b><br>
+      Total parsed rows: <b>${d.totalRows}</b><br>
+      Valid questions: <span style="color:var(--ok)"><b>${d.validCount}</b></span><br>
+      Invalid rows: <span style="color:var(--bad)"><b>${d.invalidCount}</b></span><br>
+      Potential duplicates: <span style="color:#92400E"><b>${d.duplicateCount}</b></span>
+      ${d.failures && d.failures.length > 0 ? `<div style="color:var(--bad);margin-top:6px;font-size:12px">Errors on row(s): ${d.failures.map(f => `#${f.row}: ${f.message}`).join(', ')}</div>` : ''}
+    `;
+    out.style.display = 'block';
+
+    if (d.validCount > 0) {
+      document.getElementById('csvCommitBtn').style.display = 'inline-block';
+    }
+  } catch (err) {
+    errBox.textContent = err.message || 'CSV preview failed';
+    errBox.style.display = 'block';
+  }
+});
+
+// CSV Confirm Commit
+document.getElementById('csvCommitBtn').addEventListener('click', async () => {
+  const csv = document.getElementById('csvTextInput').value.trim();
+  try {
+    const res = await aapi('/api/admin/questions/import', {
+      method: 'POST',
+      body: JSON.stringify({ csv })
+    });
+    alert(`Successfully imported ${res.data.importedCount} questions.`);
+    document.getElementById('csvImportModal').style.display = 'none';
+    loadQuestions();
+  } catch (err) {
+    const errBox = document.getElementById('csvErr');
+    errBox.textContent = err.message || 'Import failed';
+    errBox.style.display = 'block';
+  }
+});
+
 
 /* ---------- Config ---------- */
 async function loadConfig() {
+  if (!hasPermission('settings.read')) return;
   const cfg = await aapi('/api/admin/config');
   document.getElementById('c_title').value = cfg.test_title || '';
   document.getElementById('c_duration').value = cfg.duration_minutes || '90';
@@ -187,20 +764,10 @@ async function loadConfig() {
   try {
     document.getElementById('c_slabs').value = JSON.stringify(JSON.parse(cfg.scholarship_slabs), null, 2);
   } catch { document.getElementById('c_slabs').value = cfg.scholarship_slabs || ''; }
-  // Judge0 notice: coding questions are excluded from tests until configured.
-  try {
-    const j = await aapi('/api/admin/judge0-status');
-    const n = document.getElementById('judge0Notice');
-    if (j.configured) {
-      n.className = 'okmsg';
-      n.textContent = `Judge0 connected (${j.mode}). Coding questions are included in tests.`;
-    } else {
-      n.className = 'err';
-      n.textContent = 'Judge0 is NOT configured — coding questions are automatically excluded from tests (test runs with 35 questions). Set JUDGE0_ENDPOINT on the server to enable them.';
-    }
-  } catch { /* status fetch is best-effort */ }
 }
+
 document.getElementById('saveCfgBtn').addEventListener('click', async () => {
+  if (!hasPermission('settings.update')) return;
   const payload = {
     test_title: document.getElementById('c_title').value,
     duration_minutes: document.getElementById('c_duration').value,
@@ -209,10 +776,12 @@ document.getElementById('saveCfgBtn').addEventListener('click', async () => {
     quota_coding: document.getElementById('c_q_code').value,
     shuffle_questions: document.getElementById('c_shuffle_q').checked ? '1' : '0',
     shuffle_options: document.getElementById('c_shuffle_o').checked ? '1' : '0',
-    scholarship_slabs: document.getElementById('c_slabs').value,
     brand_name: document.getElementById('c_brand').value,
     accent_color: document.getElementById('c_accent').value
   };
+  if (currentUser && currentUser.role === 'SUPER_ADMIN') {
+    payload.scholarship_slabs = document.getElementById('c_slabs').value;
+  }
   try {
     await aapi('/api/admin/config', { method: 'PUT', body: JSON.stringify(payload) });
     showOk('cfgOk', 'Configuration saved.');
@@ -221,6 +790,7 @@ document.getElementById('saveCfgBtn').addEventListener('click', async () => {
 
 /* ---------- Results ---------- */
 async function loadResults() {
+  if (!hasPermission('results.read')) return;
   const p = new URLSearchParams();
   const college = document.getElementById('f_college').value.trim();
   const track = document.getElementById('f_track').value.trim();
@@ -236,24 +806,29 @@ async function loadResults() {
     <td>${Number(r.percentage).toFixed(1)}%</td><td>${r.scholarship_pct}%</td>
     <td>${esc(r.claim_code || '')}</td><td>${esc((r.submitted_at || '').slice(0, 16))}</td>
   </tr>`).join('');
-  document.getElementById('csvBtn').href = `/api/admin/results.csv?${p.toString()}`;
-  // attach token for CSV (browser download can't set headers) — use query param fallback
-  document.getElementById('csvBtn').onclick = (e) => {
-    e.preventDefault();
-    fetch(`/api/admin/results.csv?${p.toString()}`, { headers: { 'x-admin-token': adminToken() } })
-      .then((r) => { if (!r.ok) throw new Error('export failed'); return r.blob(); })
-      .then((b) => {
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(b);
-        a.download = 'aspire-results.csv';
-        a.click();
-      }).catch((err) => toast(err.message));
-  };
+
+  const csvBtn = document.getElementById('csvBtn');
+  if (csvBtn && hasPermission('results.export')) {
+    csvBtn.onclick = (e) => {
+      e.preventDefault();
+      fetch(`/api/admin/results.csv?${p.toString()}`, {
+        headers: { 'Authorization': `Bearer ${getAuthToken()}` }
+      })
+        .then((r) => { if (!r.ok) throw new Error('Export failed'); return r.blob(); })
+        .then((b) => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(b);
+          a.download = 'aspire-results.csv';
+          a.click();
+        }).catch((err) => alert(err.message));
+    };
+  }
 }
 document.getElementById('filterBtn').addEventListener('click', loadResults);
 
 /* ---------- College report ---------- */
 document.getElementById('repBtn').addEventListener('click', async () => {
+  if (!hasPermission('analytics.read')) return;
   const college = document.getElementById('repCollege').value.trim();
   if (!college) return;
   const r = await aapi(`/api/admin/report/college?college=${encodeURIComponent(college)}`);
@@ -270,4 +845,75 @@ document.getElementById('repBtn').addEventListener('click', async () => {
     <table class="data"><tr><th>#</th><th>Name</th><th>Track</th><th>Score</th><th>Scholarship</th></tr>${top || '<tr><td colspan="5">No data</td></tr>'}</table>`;
 });
 
+/* ---------- User Management ---------- */
+async function loadUsers() {
+  if (!hasPermission('users.read')) return;
+  const users = await aapi('/api/admin/users');
+  const tb = document.getElementById('usersBody');
+  const canDisable = hasPermission('users.disable');
+
+  tb.innerHTML = users.map((u) => {
+    let actionBtn = '';
+    if (canDisable) {
+      if (u.status === 'ACTIVE') {
+        actionBtn = `<button class="btn small ghost" onclick="toggleUser(${u.id}, 'disable')">Disable</button>`;
+      } else {
+        actionBtn = `<button class="btn small ghost" onclick="toggleUser(${u.id}, 'enable')">Enable</button>`;
+      }
+    }
+    return `<tr>
+      <td>${u.id}</td>
+      <td>${esc(u.name)}</td>
+      <td>${esc(u.email)}</td>
+      <td><span class="tag">${esc(u.role)}</span></td>
+      <td><span style="color:${u.status === 'ACTIVE' ? 'var(--accent, #F97316)' : 'gray'}">${esc(u.status)}</span></td>
+      <td>${esc((u.last_login_at || 'Never').slice(0, 16))}</td>
+      <td>${actionBtn || '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('addUserBtn').addEventListener('click', () => {
+  document.getElementById('userForm').style.display = 'block';
+});
+document.getElementById('cancelUserBtn').addEventListener('click', () => {
+  document.getElementById('userForm').style.display = 'none';
+  document.getElementById('userErr').style.display = 'none';
+});
+
+document.getElementById('saveUserBtn').addEventListener('click', async () => {
+  const name = document.getElementById('u_name').value.trim();
+  const email = document.getElementById('u_email').value.trim();
+  const password = document.getElementById('u_password').value;
+  const role = document.getElementById('u_role').value;
+  const errBox = document.getElementById('userErr');
+  errBox.style.display = 'none';
+
+  try {
+    await aapi('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ name, email, password, role })
+    });
+    document.getElementById('userForm').style.display = 'none';
+    document.getElementById('u_name').value = '';
+    document.getElementById('u_email').value = '';
+    document.getElementById('u_password').value = '';
+    loadUsers();
+  } catch (e) {
+    errBox.textContent = e.message;
+    errBox.style.display = 'block';
+  }
+});
+
+window.toggleUser = async (id, action) => {
+  if (!confirm(`${action === 'disable' ? 'Disable' : 'Enable'} user #${id}?`)) return;
+  try {
+    await aapi(`/api/admin/users/${id}/${action}`, { method: 'POST' });
+    loadUsers();
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+// Initial boot
 gate();

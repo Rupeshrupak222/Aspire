@@ -9,67 +9,13 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
+db.pragma('cache_size = -64000'); // 64MB memory cache for fast index/table lookups
+db.pragma('temp_store = MEMORY');
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS config (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS questions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  type TEXT NOT NULL CHECK(type IN ('mcq','code')),
-  category TEXT NOT NULL DEFAULT 'General',
-  question_text TEXT NOT NULL,
-  options_json TEXT,            -- mcq: JSON array of option strings
-  correct_index INTEGER,        -- mcq: index into the ORIGINAL options array
-  code_starter TEXT,            -- code: starter template shown to student
-  language_id INTEGER DEFAULT 71, -- Judge0 language id (71 = Python 3)
-  test_cases_json TEXT,         -- code: JSON array of {input, expected}
-  marks INTEGER NOT NULL DEFAULT 1,
-  is_sample INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS students (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL,
-  phone TEXT NOT NULL UNIQUE,   -- normalized to last 10 digits; one attempt per phone
-  email TEXT,
-  college TEXT,
-  city TEXT,
-  grad_year TEXT,
-  track TEXT,
-  campaign_code TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS attempts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  token TEXT NOT NULL UNIQUE,
-  student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'started',  -- started | submitted
-  started_at TEXT NOT NULL DEFAULT (datetime('now')),
-  expires_at TEXT NOT NULL,
-  submitted_at TEXT,
-  tab_switches INTEGER NOT NULL DEFAULT 0,
-  question_ids_json TEXT NOT NULL,  -- JSON array of question ids in served order
-  shuffle_map_json TEXT NOT NULL DEFAULT '{}', -- {qid: [origIdx per shuffled position]}
-  answers_json TEXT,                -- mcq answers {qid: shuffledSelectedIndex}
-  code_answers_json TEXT,           -- code answers {qid: sourceCode}
-  score REAL,
-  total_marks REAL,
-  percentage REAL,
-  scholarship_pct INTEGER,
-  certificate_id TEXT UNIQUE,
-  claim_code TEXT UNIQUE,
-  was_late INTEGER NOT NULL DEFAULT 0,
-  graded_detail_json TEXT           -- per-question {id, category, type, marks, earned}
-);
-CREATE INDEX IF NOT EXISTS idx_attempts_token ON attempts(token);
-CREATE INDEX IF NOT EXISTS idx_attempts_cert ON attempts(certificate_id);
-CREATE INDEX IF NOT EXISTS idx_students_phone ON students(phone);
-`);
+const { runMigrations } = require('./migrations');
+runMigrations(db);
 
 const DEFAULT_CONFIG = {
   test_title: 'Aspire Scholarship Test',
@@ -94,16 +40,87 @@ const DEFAULT_CONFIG = {
   accent_color: '#F97316'
 };
 
-function getConfig() {
-  const rows = db.prepare('SELECT key, value FROM config').all();
+function getConfig(targetDb = db) {
+  const rows = targetDb.prepare('SELECT key, value FROM config').all();
   const cfg = { ...DEFAULT_CONFIG };
   for (const r of rows) cfg[r.key] = r.value;
   return cfg;
 }
 
-function setConfig(key, value) {
-  db.prepare(`INSERT INTO config(key, value) VALUES(?, ?)
+function setConfig(key, value, targetDb = db) {
+  targetDb.prepare(`INSERT INTO config(key, value) VALUES(?, ?)
               ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, String(value));
 }
 
-module.exports = { db, getConfig, setConfig, DEFAULT_CONFIG, DB_PATH };
+function checkDbHealth(targetDb = db) {
+  try {
+    const alive = targetDb.prepare('SELECT 1 AS alive').get();
+    if (!alive || alive.alive !== 1) return { healthy: false, error: 'Database ping failed' };
+
+    const fk = targetDb.pragma('foreign_keys', { simple: true });
+    const jm = targetDb.pragma('journal_mode', { simple: true });
+
+    let latestMigration = null;
+    try {
+      const row = targetDb.prepare('SELECT version FROM schema_migrations ORDER BY applied_at DESC, version DESC LIMIT 1').get();
+      if (row) latestMigration = row.version;
+    } catch {
+      // migrations table might not exist yet during initial boot
+    }
+
+    return {
+      healthy: true,
+      journalMode: jm,
+      foreignKeys: fk === 1,
+      latestMigration
+    };
+  } catch (err) {
+    return {
+      healthy: false,
+      error: err.message
+    };
+  }
+}
+
+function getDbStats(targetDb = db) {
+  try {
+    const counts = {};
+    const tables = ['organizations', 'users', 'sessions', 'audit_logs', 'questions', 'students', 'attempts'];
+    for (const t of tables) {
+      try {
+        const r = targetDb.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get();
+        counts[t] = r.c;
+      } catch {
+        counts[t] = 0;
+      }
+    }
+    return counts;
+  } catch {
+    return {};
+  }
+}
+
+function closeDatabase(targetDb = db) {
+  if (targetDb && targetDb.open) {
+    try {
+      targetDb.close();
+      return true;
+    } catch (e) {
+      console.error('[db] Error closing database:', e.message);
+      return false;
+    }
+  }
+  return false;
+}
+
+module.exports = {
+  db,
+  getConfig,
+  setConfig,
+  checkDbHealth,
+  getDbStats,
+  closeDatabase,
+  DEFAULT_CONFIG,
+  DB_PATH
+};
+
