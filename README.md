@@ -40,9 +40,13 @@ PDFKit (certificates) · Judge0 for code execution · Docker-ready.
 
 ## Docs
 
+- `EXAM-VERSIONING.md` — Exam lifecycle state machine (`DRAFT` → `REVIEW` → `PUBLISHED` → `LIVE` → `CLOSED` → `ARCHIVED`), strict version immutability, lineage & forking
+- `QUESTION-SECURITY.md` — Zero-leakage client API sanitization, deterministic Fisher-Yates PRNG, shuffle maps, and cryptographic SHA-256 snapshot integrity
+- `EXAM-BUILDER.md` — Multi-section exam architecture, manual question picking, dynamic rule quotas, and multi-slab scholarships
+- `QUESTION-BANK.md` — Question Bank 2.0 multi-tenant CRUD, fuzzy search, tagging, and versioning
 - `DEPLOY.md` — local run, Docker deploy, env vars, Judge0 setup (RapidAPI + self-hosted), subdomain/DNS
 - `HANDOVER.md` — architecture, DB schema, what the tech team must provide, where to change branding/pricing
-- `test/selftest.js` — automated end-to-end test (`npm test`, 50+ assertions, all green)
+- `test/` — 8 automated end-to-end test suites (`npm test`, 100+ assertions, all green)
 
 ## Project layout
 

@@ -79,12 +79,18 @@ function applyRoleAwareUI() {
   document.getElementById('userMenu').style.display = 'flex';
 
   // Tab visibility
+  const canExams = permissions.includes('exams.read');
   const canQuestions = permissions.includes('questions.read');
   const canConfig = permissions.includes('settings.read');
   const canResults = permissions.includes('results.read');
   const canAnalytics = permissions.includes('analytics.read');
   const canUsers = permissions.includes('users.read');
   const canExport = permissions.includes('results.export');
+
+  const examTab = document.getElementById('tab-exams');
+  if (examTab) examTab.style.display = canExams ? 'inline-block' : 'none';
+  const createExamBtn = document.getElementById('createExamBtn');
+  if (createExamBtn) createExamBtn.style.display = permissions.includes('exams.create') ? 'inline-block' : 'none';
 
   document.getElementById('tab-questions').style.display = canQuestions ? 'inline-block' : 'none';
   document.getElementById('tab-config').style.display = canConfig ? 'inline-block' : 'none';
@@ -111,7 +117,8 @@ function applyRoleAwareUI() {
   }
 
   // Switch to default permissible tab
-  if (canQuestions) switchTab('questions');
+  if (canExams) switchTab('exams');
+  else if (canQuestions) switchTab('questions');
   else if (canResults) switchTab('results');
   else if (canAnalytics) switchTab('report');
   else if (canConfig) switchTab('config');
@@ -184,6 +191,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpane').forEach((p) => p.style.display = p.id === `pane-${name}` ? 'block' : 'none');
+  if (name === 'exams') loadExams();
   if (name === 'questions') loadQuestions();
   if (name === 'config') loadConfig();
   if (name === 'results') loadResults();
@@ -915,5 +923,708 @@ window.toggleUser = async (id, action) => {
   }
 };
 
+/* ====================================================
+   Exam Builder 2.0 Frontend Controller
+==================================================== */
+let examCurrentPage = 1;
+let examTotalPages = 1;
+let currentEditingExamId = null;
+let currentExamData = null;
+let currentBuilderStep = 1;
+
+async function loadExams(page = 1) {
+  if (!hasPermission('exams.read')) return;
+  examCurrentPage = page;
+
+  const search = document.getElementById('examSearchInput')?.value.trim() || '';
+  const status = document.getElementById('examStatusFilter')?.value || '';
+
+  const params = new URLSearchParams({ page, limit: 10 });
+  if (search) params.set('search', search);
+  if (status) params.set('status', status);
+
+  try {
+    const res = await aapi(`/api/admin/exams?${params.toString()}`);
+    const items = res.data?.items || [];
+    const pagination = res.data?.pagination || { page: 1, limit: 10, total: 0, totalPages: 1 };
+
+    examTotalPages = pagination.totalPages;
+    const tbody = document.getElementById('examsBody');
+    tbody.innerHTML = '';
+
+    if (items.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">No exams found. Click "+ Create Exam" to start.</td></tr>';
+      document.getElementById('examPaginationInfo').textContent = 'Showing 0 of 0 exams';
+      document.getElementById('examPrevPageBtn').disabled = true;
+      document.getElementById('examNextPageBtn').disabled = true;
+      return;
+    }
+
+    items.forEach((e) => {
+      const tr = document.createElement('tr');
+      const statusClass = `status-${(e.status || 'draft').toLowerCase()}`;
+      const canEdit = hasPermission('exams.update');
+      const canPublish = hasPermission('exams.publish');
+
+      let actionHtml = `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
+      actionHtml += `<button class="btn small ghost" onclick="openExamPreview(${e.id})">Preview</button>`;
+
+      if (canEdit && (e.status === 'DRAFT' || e.status === 'REVIEW')) {
+        actionHtml += `<button class="btn small ghost" onclick="openExamBuilder(${e.id})">Edit</button>`;
+      }
+
+      if (canPublish && (e.status === 'DRAFT' || e.status === 'REVIEW')) {
+        actionHtml += `<button class="btn small" style="background:var(--success, #059669)" onclick="publishExamQuick(${e.id})">Publish</button>`;
+      }
+
+      if (canPublish && e.status === 'PUBLISHED') {
+        actionHtml += `<button class="btn small" style="background:#2563EB" onclick="makeExamLiveQuick(${e.id})">Go Live</button>`;
+      }
+
+      if (canPublish && (e.status === 'LIVE' || e.status === 'PUBLISHED')) {
+        actionHtml += `<button class="btn small ghost" onclick="closeExamQuick(${e.id})">Close</button>`;
+      }
+
+      if (canPublish && e.status === 'CLOSED') {
+        actionHtml += `<button class="btn small ghost" style="color:#2563EB" onclick="makeExamLiveQuick(${e.id})">Reopen</button>`;
+      }
+
+      if (canEdit && e.status !== 'ARCHIVED' && e.status !== 'DRAFT') {
+        actionHtml += `<button class="btn small ghost" onclick="versionExamQuick(${e.id})">+ v${e.version + 1}</button>`;
+      }
+
+      if (canEdit && e.status !== 'ARCHIVED') {
+        actionHtml += `<button class="btn small ghost" style="color:var(--danger, #DC2626)" onclick="archiveExamQuick(${e.id})">Archive</button>`;
+      }
+
+      if (canEdit && e.status === 'ARCHIVED') {
+        actionHtml += `<button class="btn small ghost" onclick="versionExamQuick(${e.id})">+ New Version</button>`;
+      }
+
+      actionHtml += `</div>`;
+
+      tr.innerHTML = `
+        <td>
+          <strong>${esc(e.name)}</strong>
+          <div style="font-family:monospace;font-size:12px;color:var(--muted)">${esc(e.code)}</div>
+        </td>
+        <td><span class="status-badge ${statusClass}">${esc(e.status)}</span></td>
+        <td>v${e.version}</td>
+        <td>${e.section_count || 0}</td>
+        <td>${e.duration_minutes}m</td>
+        <td>${e.total_marks || 0}</td>
+        <td>${e.passing_score}%</td>
+        <td>${actionHtml}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const start = (pagination.page - 1) * pagination.limit + 1;
+    const end = Math.min(pagination.total, pagination.page * pagination.limit);
+    document.getElementById('examPaginationInfo').textContent = `Showing ${start}-${end} of ${pagination.total} exams`;
+    document.getElementById('examCurrentPage').textContent = `Page ${pagination.page} of ${pagination.totalPages}`;
+    document.getElementById('examPrevPageBtn').disabled = pagination.page <= 1;
+    document.getElementById('examNextPageBtn').disabled = pagination.page >= pagination.totalPages;
+
+  } catch (err) {
+    console.error('Failed to load exams', err);
+  }
+}
+
+// Filter listeners for exams
+document.getElementById('applyExamFiltersBtn')?.addEventListener('click', () => loadExams(1));
+document.getElementById('resetExamFiltersBtn')?.addEventListener('click', () => {
+  document.getElementById('examSearchInput').value = '';
+  document.getElementById('examStatusFilter').value = '';
+  loadExams(1);
+});
+document.getElementById('examPrevPageBtn')?.addEventListener('click', () => {
+  if (examCurrentPage > 1) loadExams(examCurrentPage - 1);
+});
+document.getElementById('examNextPageBtn')?.addEventListener('click', () => {
+  if (examCurrentPage < examTotalPages) loadExams(examCurrentPage + 1);
+});
+
+// Step navigation in Exam Builder
+function showBuilderStep(step) {
+  currentBuilderStep = step;
+  document.querySelectorAll('.builder-step').forEach((el, idx) => {
+    el.style.display = (idx + 1 === step) ? 'block' : 'none';
+  });
+  document.querySelectorAll('#examBuilderModal .tab').forEach((t) => {
+    const s = parseInt(t.dataset.step, 10);
+    t.classList.toggle('active', s === step);
+  });
+}
+
+document.querySelectorAll('#examBuilderModal .tab').forEach((t) => {
+  t.addEventListener('click', () => {
+    const step = parseInt(t.dataset.step, 10);
+    if (step > 1 && !currentEditingExamId) {
+      alert('Please save Basic Information first.');
+      return;
+    }
+    showBuilderStep(step);
+    if (step === 2) renderBuilderSections();
+    if (step === 3) renderBuilderSlabs();
+    if (step === 4) renderBuilderReview();
+  });
+});
+
+document.querySelectorAll('.back-step-btn').forEach((b) => {
+  b.addEventListener('click', () => showBuilderStep(parseInt(b.dataset.back, 10)));
+});
+document.querySelectorAll('.next-step-btn').forEach((b) => {
+  b.addEventListener('click', () => {
+    const next = parseInt(b.dataset.next, 10);
+    showBuilderStep(next);
+    if (next === 2) renderBuilderSections();
+    if (next === 3) renderBuilderSlabs();
+    if (next === 4) renderBuilderReview();
+  });
+});
+
+// Open Exam Builder
+window.openExamBuilder = async (examId = null) => {
+  currentEditingExamId = examId;
+  const modal = document.getElementById('examBuilderModal');
+  const errBox = document.getElementById('builderGlobalErr');
+  errBox.style.display = 'none';
+
+  if (!examId) {
+    document.getElementById('builderModalTitle').textContent = 'Create New Exam';
+    document.getElementById('eb_name').value = '';
+    document.getElementById('eb_code').value = '';
+    document.getElementById('eb_desc').value = '';
+    document.getElementById('eb_duration').value = 90;
+    document.getElementById('eb_passing').value = 40;
+    document.getElementById('eb_attempts').value = 1;
+    document.getElementById('eb_shuffle_q').checked = true;
+    document.getElementById('eb_shuffle_o').checked = true;
+    currentExamData = null;
+    showBuilderStep(1);
+  } else {
+    document.getElementById('builderModalTitle').textContent = 'Edit Exam';
+    try {
+      const res = await aapi(`/api/admin/exams/${examId}`);
+      currentExamData = res.data;
+      document.getElementById('eb_name').value = currentExamData.name || '';
+      document.getElementById('eb_code').value = currentExamData.code || '';
+      document.getElementById('eb_desc').value = currentExamData.description || '';
+      document.getElementById('eb_duration').value = currentExamData.duration_minutes || 90;
+      document.getElementById('eb_passing').value = currentExamData.passing_score || 40;
+      document.getElementById('eb_attempts').value = currentExamData.max_attempts || 1;
+      document.getElementById('eb_shuffle_q').checked = currentExamData.shuffle_questions !== 0;
+      document.getElementById('eb_shuffle_o').checked = currentExamData.shuffle_options !== 0;
+      showBuilderStep(1);
+    } catch (err) {
+      alert(err.message);
+      return;
+    }
+  }
+  modal.style.display = 'block';
+};
+
+document.getElementById('createExamBtn')?.addEventListener('click', () => openExamBuilder(null));
+document.getElementById('closeBuilderModalBtn')?.addEventListener('click', () => {
+  document.getElementById('examBuilderModal').style.display = 'none';
+  loadExams(examCurrentPage);
+});
+
+// Step 1: Save & Next
+document.getElementById('step1SaveNextBtn')?.addEventListener('click', async () => {
+  const name = document.getElementById('eb_name').value.trim();
+  const code = document.getElementById('eb_code').value.trim().toUpperCase();
+  const description = document.getElementById('eb_desc').value.trim();
+  const duration_minutes = parseInt(document.getElementById('eb_duration').value, 10);
+  const passing_score = parseFloat(document.getElementById('eb_passing').value);
+  const max_attempts = parseInt(document.getElementById('eb_attempts').value, 10);
+  const shuffle_questions = document.getElementById('eb_shuffle_q').checked;
+  const shuffle_options = document.getElementById('eb_shuffle_o').checked;
+
+  const errBox = document.getElementById('builderGlobalErr');
+  errBox.style.display = 'none';
+
+  if (!name || name.length < 3) {
+    errBox.textContent = 'Exam name must be at least 3 characters.';
+    errBox.style.display = 'block';
+    return;
+  }
+  if (!code || code.length < 3) {
+    errBox.textContent = 'Exam code must be at least 3 characters.';
+    errBox.style.display = 'block';
+    return;
+  }
+
+  try {
+    if (!currentEditingExamId) {
+      const res = await aapi('/api/admin/exams', {
+        method: 'POST',
+        body: JSON.stringify({ name, code, description, duration_minutes, passing_score, max_attempts, shuffle_questions, shuffle_options })
+      });
+      currentEditingExamId = res.data.id;
+      currentExamData = res.data;
+    } else {
+      const res = await aapi(`/api/admin/exams/${currentEditingExamId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ name, code, description, duration_minutes, passing_score, max_attempts, shuffle_questions, shuffle_options, expected_version: currentExamData?.version })
+      });
+      currentExamData = res.data;
+    }
+    showBuilderStep(2);
+    renderBuilderSections();
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+  }
+});
+
+// Step 2: Render Sections
+async function renderBuilderSections() {
+  if (!currentEditingExamId) return;
+  try {
+    const res = await aapi(`/api/admin/exams/${currentEditingExamId}`);
+    currentExamData = res.data;
+    const container = document.getElementById('sectionsListContainer');
+    container.innerHTML = '';
+
+    const sections = currentExamData.sections || [];
+    if (sections.length === 0) {
+      container.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px;border:1px dashed var(--line);border-radius:6px">No sections configured yet. Click "+ Add Section" above.</div>';
+      return;
+    }
+
+    sections.forEach((s, idx) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.sectionId = s.id;
+      card.style.background = '#FAFAFA';
+      card.style.border = '1px solid var(--line)';
+      card.style.padding = '14px';
+
+      let contentHtml = '';
+      if (s.question_selection_mode === 'MANUAL') {
+        const qs = s.questions || [];
+        contentHtml = `
+          <div style="margin-top:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span style="font-size:12px;font-weight:600;color:var(--muted)">ATTACHED QUESTIONS (${qs.length})</span>
+              <button class="btn small ghost" onclick="promptAddQuestionToSection(${s.id})">+ Add Question ID</button>
+            </div>
+            ${qs.length === 0 ? '<div style="font-size:12px;color:var(--muted)">No questions attached yet.</div>' :
+              qs.map(q => `
+                <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:6px 10px;margin-bottom:4px;border:1px solid var(--line);border-radius:4px;font-size:13px">
+                  <span>#${q.id} [${esc(q.type)}] ${esc(q.question_text.substring(0, 60))}... (<strong>${q.marks}m</strong>)</span>
+                  <button class="btn small ghost" style="color:red;padding:2px 6px" onclick="removeQuestionFromSec(${s.id}, ${q.id})">&times;</button>
+                </div>
+              `).join('')}
+          </div>
+        `;
+      } else {
+        const rules = s.rules || [];
+        contentHtml = `
+          <div style="margin-top:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span style="font-size:12px;font-weight:600;color:var(--muted)">SELECTION RULES (${rules.length})</span>
+              <button class="btn small ghost" onclick="promptAddRuleToSection(${s.id})">+ Add Rule</button>
+            </div>
+            ${rules.length === 0 ? '<div style="font-size:12px;color:var(--muted)">No rules configured yet.</div>' :
+              rules.map(r => `
+                <div style="display:flex;justify-content:space-between;align-items:center;background:#fff;padding:6px 10px;margin-bottom:4px;border:1px solid var(--line);border-radius:4px;font-size:13px">
+                  <span>Sample <strong>${r.count}</strong> questions (Type: ${esc(r.type || 'ANY')}, Cat: ${esc(r.category || 'ANY')}, Diff: ${esc(r.difficulty || 'ANY')}) &mdash; ${r.marks_per_question} marks each</span>
+                  <button class="btn small ghost" style="color:red;padding:2px 6px" onclick="removeRuleFromSec(${s.id}, ${r.id})">&times;</button>
+                </div>
+              `).join('')}
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span class="handle" style="cursor:grab;color:var(--muted);font-size:16px">&#9776;</span>
+            <span style="font-weight:600">${idx + 1}. ${esc(s.name)}</span>
+            <span class="tag">${s.question_selection_mode}</span>
+            <span style="font-size:12px;color:var(--muted)">(${s.total_questions || 0} questions &middot; ${s.total_marks || 0} marks)</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="btn small ghost" onclick="moveSectionOrder(${s.id}, 'up')" ${idx === 0 ? 'disabled' : ''}>&uarr;</button>
+            <button class="btn small ghost" onclick="moveSectionOrder(${s.id}, 'down')" ${idx === sections.length - 1 ? 'disabled' : ''}>&darr;</button>
+            <button class="btn small ghost" style="color:red" onclick="deleteSectionConfirm(${s.id})">Delete</button>
+          </div>
+        </div>
+        ${s.description ? `<div style="font-size:12px;color:var(--muted);margin:4px 0 0 26px">${esc(s.description)}</div>` : ''}
+        ${contentHtml}
+      `;
+      container.appendChild(card);
+    });
+
+    // Initialize SortableJS if loaded
+    if (typeof Sortable !== 'undefined') {
+      new Sortable(container, {
+        handle: '.handle',
+        animation: 150,
+        onEnd: async () => {
+          const newOrder = Array.from(container.children).map(c => parseInt(c.dataset.sectionId, 10));
+          await aapi(`/api/admin/exams/${currentEditingExamId}/sections-reorder`, {
+            method: 'PUT',
+            body: JSON.stringify({ sectionIds: newOrder })
+          });
+          renderBuilderSections();
+        }
+      });
+    }
+
+  } catch (err) {
+    console.error('Failed to render sections', err);
+  }
+}
+
+// Section inline controls
+document.getElementById('addSectionPromptBtn')?.addEventListener('click', () => {
+  document.getElementById('newSectionBox').style.display = 'block';
+});
+document.getElementById('cancelSectionBtn')?.addEventListener('click', () => {
+  document.getElementById('newSectionBox').style.display = 'none';
+});
+document.getElementById('saveSectionBtn')?.addEventListener('click', async () => {
+  const name = document.getElementById('sec_name').value.trim();
+  const question_selection_mode = document.getElementById('sec_mode').value;
+  const description = document.getElementById('sec_desc').value.trim();
+
+  if (!name) return alert('Section name is required');
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/sections`, {
+      method: 'POST',
+      body: JSON.stringify({ name, question_selection_mode, description })
+    });
+    document.getElementById('newSectionBox').style.display = 'none';
+    document.getElementById('sec_name').value = '';
+    document.getElementById('sec_desc').value = '';
+    renderBuilderSections();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+window.moveSectionOrder = async (sectionId, direction) => {
+  const sections = currentExamData.sections || [];
+  const idx = sections.findIndex(s => s.id === sectionId);
+  if (idx < 0) return;
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= sections.length) return;
+
+  const order = sections.map(s => s.id);
+  const temp = order[idx];
+  order[idx] = order[targetIdx];
+  order[targetIdx] = temp;
+
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/sections-reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ sectionIds: order })
+    });
+    renderBuilderSections();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.deleteSectionConfirm = async (sectionId) => {
+  if (!confirm('Are you sure you want to delete this section?')) return;
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/sections/${sectionId}`, { method: 'DELETE' });
+    renderBuilderSections();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.promptAddQuestionToSection = async (sectionId) => {
+  const qidStr = prompt('Enter the Question ID from the Question Bank to attach:');
+  if (!qidStr) return;
+  const question_id = parseInt(qidStr, 10);
+  if (isNaN(question_id) || question_id <= 0) return alert('Please enter a valid numeric Question ID');
+
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/sections/${sectionId}/questions`, {
+      method: 'POST',
+      body: JSON.stringify({ question_id })
+    });
+    renderBuilderSections();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.removeQuestionFromSec = async (sectionId, questionId) => {
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/sections/${sectionId}/questions/${questionId}`, { method: 'DELETE' });
+    renderBuilderSections();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.promptAddRuleToSection = async (sectionId) => {
+  const countStr = prompt('How many questions should this rule select?', '5');
+  if (!countStr) return;
+  const count = parseInt(countStr, 10) || 5;
+
+  const category = prompt('Category filter (e.g. aptitude, technical, coding, or blank for any):', 'technical');
+  const type = prompt('Type filter (MCQ, CODING, or blank for any):', 'MCQ');
+  const difficulty = prompt('Difficulty filter (EASY, MEDIUM, HARD, or blank for any):', 'MEDIUM');
+  const marksStr = prompt('Marks per question:', '2');
+  const marks_per_question = parseFloat(marksStr) || 1;
+
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/sections/${sectionId}/rules`, {
+      method: 'POST',
+      body: JSON.stringify({
+        count,
+        category: category?.trim() || null,
+        type: type?.trim().toUpperCase() || null,
+        difficulty: difficulty?.trim().toUpperCase() || null,
+        marks_per_question
+      })
+    });
+    renderBuilderSections();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.removeRuleFromSec = async (sectionId, ruleId) => {
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/sections/${sectionId}/rules/${ruleId}`, { method: 'DELETE' });
+    renderBuilderSections();
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+// Step 3: Scholarship Slabs
+async function renderBuilderSlabs() {
+  if (!currentEditingExamId) return;
+  const tbody = document.getElementById('slabsConfigBody');
+  tbody.innerHTML = '';
+
+  const slabs = currentExamData.scholarship_slabs || [
+    { min_score_pct: 90, max_score_pct: 100, discount_pct: 100, tier_name: 'Tier 1 (100% Scholarship)' },
+    { min_score_pct: 75, max_score_pct: 89.99, discount_pct: 50, tier_name: 'Tier 2 (50% Scholarship)' },
+    { min_score_pct: 60, max_score_pct: 74.99, discount_pct: 25, tier_name: 'Tier 3 (25% Scholarship)' },
+    { min_score_pct: 40, max_score_pct: 59.99, discount_pct: 10, tier_name: 'Tier 4 (10% Scholarship)' },
+    { min_score_pct: 0, max_score_pct: 39.99, discount_pct: 0, tier_name: 'No Scholarship' }
+  ];
+
+  slabs.forEach((s) => {
+    addSlabRow(s.min_score_pct, s.max_score_pct, s.discount_pct, s.tier_name);
+  });
+}
+
+function addSlabRow(min = 0, max = 100, disc = 0, name = '') {
+  const tbody = document.getElementById('slabsConfigBody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="number" min="0" max="100" class="slab-min" value="${min}" style="width:70px;margin:0"></td>
+    <td><input type="number" min="0" max="100" class="slab-max" value="${max}" style="width:70px;margin:0"></td>
+    <td><input type="number" min="0" max="100" class="slab-disc" value="${disc}" style="width:70px;margin:0"></td>
+    <td><input type="text" class="slab-name" value="${esc(name)}" placeholder="Label" style="margin:0"></td>
+    <td><button class="btn small ghost" style="color:red" onclick="this.closest('tr').remove()">&times;</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+document.getElementById('addSlabRowBtn')?.addEventListener('click', () => addSlabRow());
+
+document.getElementById('saveSlabsAndContinueBtn')?.addEventListener('click', async () => {
+  const rows = Array.from(document.querySelectorAll('#slabsConfigBody tr'));
+  const slabs = rows.map((tr) => ({
+    min_score_pct: parseFloat(tr.querySelector('.slab-min').value) || 0,
+    max_score_pct: parseFloat(tr.querySelector('.slab-max').value) || 0,
+    discount_pct: parseFloat(tr.querySelector('.slab-disc').value) || 0,
+    tier_name: tr.querySelector('.slab-name').value.trim()
+  }));
+
+  try {
+    const res = await aapi(`/api/admin/exams/${currentEditingExamId}/scholarship-slabs`, {
+      method: 'PUT',
+      body: JSON.stringify({ slabs })
+    });
+    currentExamData = res.data;
+    showBuilderStep(4);
+    renderBuilderReview();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// Step 4: Review & Publish Validation
+async function renderBuilderReview() {
+  if (!currentEditingExamId) return;
+  const statusBox = document.getElementById('publishValidationResults');
+  const summaryBox = document.getElementById('examReviewSummaryCard');
+
+  try {
+    const res = await aapi(`/api/admin/exams/${currentEditingExamId}/preview`);
+    const { exam, publishStatus } = res.data;
+    currentExamData = exam;
+
+    if (publishStatus.publishable) {
+      statusBox.innerHTML = `
+        <div class="okmsg" style="padding:10px;margin-bottom:12px;background:#ECFDF5;color:#065F46;border-radius:6px">
+          &#10003; <strong>Ready to Publish:</strong> All sections, question pools, and scoring thresholds are valid.
+        </div>
+      `;
+      document.getElementById('builderPublishBtn').disabled = false;
+    } else {
+      statusBox.innerHTML = `
+        <div class="err" style="padding:10px;margin-bottom:12px">
+          <strong>Cannot publish yet:</strong>
+          <ul style="margin:6px 0 0 16px;padding:0">
+            ${(publishStatus.errors || []).map(e => `<li>${esc(e)}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+      document.getElementById('builderPublishBtn').disabled = true;
+    }
+
+    summaryBox.innerHTML = `
+      <div class="row" style="margin-bottom:10px">
+        <div><strong>Exam:</strong> ${esc(exam.name)} (<code>${esc(exam.code)}</code>)</div>
+        <div><strong>Status:</strong> <span class="status-badge status-${exam.status.toLowerCase()}">${esc(exam.status)}</span></div>
+        <div><strong>Version:</strong> v${exam.version}</div>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <div><strong>Duration:</strong> ${exam.duration_minutes} minutes</div>
+        <div><strong>Total Marks:</strong> ${exam.total_marks || 0}</div>
+        <div><strong>Passing Score:</strong> ${exam.passing_score}%</div>
+        <div><strong>Max Attempts:</strong> ${exam.max_attempts}</div>
+      </div>
+      <div style="font-size:13px;color:var(--muted)">
+        ${(exam.sections || []).map((s, i) => `${i + 1}. ${esc(s.name)} (${s.total_questions || 0}Q, ${s.total_marks || 0} marks)`).join(' &middot; ')}
+      </div>
+    `;
+
+  } catch (err) {
+    statusBox.innerHTML = `<div class="err">${esc(err.message)}</div>`;
+  }
+}
+
+// Publish Exam in Builder
+document.getElementById('builderPublishBtn')?.addEventListener('click', async () => {
+  if (!confirm(`Are you sure you want to publish "${currentExamData?.name}"? Candidates will immediately be able to take this assessment.`)) return;
+  try {
+    await aapi(`/api/admin/exams/${currentEditingExamId}/publish`, { method: 'POST' });
+    alert('Exam published successfully!');
+    document.getElementById('examBuilderModal').style.display = 'none';
+    loadExams(examCurrentPage);
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
+// Quick action handlers
+window.publishExamQuick = async (id) => {
+  if (!confirm('Publish this exam and make it available for assessments?')) return;
+  try {
+    await aapi(`/api/admin/exams/${id}/publish`, { method: 'POST' });
+    loadExams(examCurrentPage);
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.makeExamLiveQuick = async (id) => {
+  if (!confirm('Transition this exam to LIVE? Candidates will be actively permitted to register and attempt.')) return;
+  try {
+    await aapi(`/api/admin/exams/${id}/live`, { method: 'POST' });
+    loadExams(examCurrentPage);
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.closeExamQuick = async (id) => {
+  if (!confirm('Close this exam? New candidate attempts will be blocked, but existing attempts remain accessible.')) return;
+  try {
+    await aapi(`/api/admin/exams/${id}/close`, { method: 'POST' });
+    loadExams(examCurrentPage);
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.archiveExamQuick = async (id) => {
+  if (!confirm('Archive this exam? Candidates will no longer be able to start new attempts.')) return;
+  try {
+    await aapi(`/api/admin/exams/${id}/archive`, { method: 'POST' });
+    loadExams(examCurrentPage);
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+window.versionExamQuick = async (id) => {
+  if (!confirm('Create a new DRAFT version from this exam?')) return;
+  try {
+    const res = await aapi(`/api/admin/exams/${id}/version`, { method: 'POST' });
+    alert(`Created new version: ${res.data.name} (${res.data.code})`);
+    loadExams(1);
+    openExamBuilder(res.data.id);
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+// Exam Preview Modal Handler
+window.openExamPreview = async (examId) => {
+  try {
+    const res = await aapi(`/api/admin/exams/${examId}/preview`);
+    const exam = res.data.exam;
+    const modal = document.getElementById('examPreviewModal');
+    document.getElementById('previewModalTitle').textContent = exam.name;
+    document.getElementById('previewModalMeta').textContent = `Code: ${exam.code} · Duration: ${exam.duration_minutes}m · Total Marks: ${exam.total_marks} · Passing: ${exam.passing_score}%`;
+
+    const content = document.getElementById('examPreviewContent');
+    let html = `<div style="display:flex;flex-direction:column;gap:16px">`;
+
+    (exam.sections || []).forEach((s, idx) => {
+      html += `
+        <div class="card" style="background:#F9FAFB;padding:14px;border:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <h4 style="margin:0">${idx + 1}. ${esc(s.name)}</h4>
+            <span class="tag">${s.question_selection_mode} (${s.total_questions || 0} questions &middot; ${s.total_marks || 0} marks)</span>
+          </div>
+          ${s.description ? `<p style="font-size:12px;color:var(--muted);margin:0 0 10px 0">${esc(s.description)}</p>` : ''}
+          ${s.question_selection_mode === 'MANUAL' && s.questions ?
+            s.questions.map((q, qi) => `
+              <div style="background:#fff;padding:8px;border-radius:4px;margin-bottom:6px;border:1px solid var(--line)">
+                <div style="font-size:13px;font-weight:600">Q${qi + 1}. [${esc(q.type)}] ${esc(q.question_text)} (${q.marks} marks)</div>
+              </div>
+            `).join('') :
+            `<div style="font-size:13px;color:var(--muted)">Random pool selection from question bank (${s.rules?.length || 0} active rules).</div>`
+          }
+        </div>
+      `;
+    });
+
+    html += `</div>`;
+    content.innerHTML = html;
+    modal.style.display = 'block';
+
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+document.getElementById('closeExamPreviewBtn')?.addEventListener('click', () => {
+  document.getElementById('examPreviewModal').style.display = 'none';
+});
+document.getElementById('builderPreviewExamBtn')?.addEventListener('click', () => {
+  if (currentEditingExamId) openExamPreview(currentEditingExamId);
+});
+
 // Initial boot
 gate();
+

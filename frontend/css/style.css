@@ -115,6 +115,8 @@ pre.q { background: #F3F4F6; padding: 12px; border-radius: 8px; white-space: pre
 .status-draft { background: #F3F4F6; color: #4B5563; border: 1px solid #D1D5DB; }
 .status-review { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
 .status-published { background: #DCFCE7; color: #166534; border: 1px solid #86EFAC; }
+.status-live { background: #DBEAFE; color: #1E40AF; border: 1px solid #93C5FD; }
+.status-closed { background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1; }
 .status-archived { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
 
 .diff-badge {
@@ -140,4 +142,8 @@ pre.q { background: #F3F4F6; padding: 12px; border-radius: 8px; white-space: pre
   display: flex; justify-content: space-between; align-items: center; margin-top: 16px;
   font-size: 14px; color: var(--muted);
 }
+
+/* Drag Handle */
+.handle { user-select: none; transition: transform 0.15s ease; cursor: grab; }
+.handle:active { cursor: grabbing; transform: scale(1.15); }
 

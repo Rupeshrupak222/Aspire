@@ -29,7 +29,19 @@ const { escapeLike } = require('../security/sanitizer');
 const userService = require('../services/user.service');
 const orgService = require('../services/organization.service');
 const questionService = require('../services/question.service');
+const examService = require('../services/exam.service');
 const { recordAuditEvent } = require('../services/audit.service');
+const {
+  createExamSchema,
+  updateExamSchema,
+  createSectionSchema,
+  updateSectionSchema,
+  reorderSectionsSchema,
+  addSectionQuestionSchema,
+  addSectionRuleSchema,
+  setScholarshipSlabsSchema,
+  listExamsQuerySchema
+} = require('../validation/exam.schemas');
 
 const router = express.Router();
 
@@ -246,6 +258,146 @@ router.delete('/questions/:id', requirePermission(PERMISSIONS.QUESTIONS_DELETE),
   res.json({ ok: true });
 });
 
+/* ---------- Exam Builder 2.0 Endpoints ---------- */
+
+// 1. List exams (paginated, filtered, search, tenant-scoped)
+router.get('/exams', requirePermission(PERMISSIONS.EXAMS_READ), validate({ query: listExamsQuerySchema }), (req, res) => {
+  const result = examService.listExams(req.query, req.user);
+  res.json({ success: true, data: result });
+});
+
+// 2. Create exam (DRAFT)
+router.post('/exams', requirePermission(PERMISSIONS.EXAMS_CREATE), validate({ body: createExamSchema }), (req, res) => {
+  const exam = examService.createExam(req.body, req.user, req);
+  res.status(201).json({ success: true, data: exam });
+});
+
+// 3. Get single exam with sections, questions/rules, and scholarship slabs
+router.get('/exams/:id', requirePermission(PERMISSIONS.EXAMS_READ), validate({ params: idParamSchema }), (req, res) => {
+  const exam = examService.getExamById(req.params.id, req.user);
+  res.json({ success: true, data: exam });
+});
+
+// 4. Update exam basic details & settings (optimistic concurrency enabled)
+router.put('/exams/:id', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ params: idParamSchema, body: updateExamSchema }), (req, res) => {
+  const exam = examService.updateExam(req.params.id, req.body, req.user, req);
+  res.json({ success: true, data: exam });
+});
+
+// 5. Pre-publish validation & preview
+router.get('/exams/:id/preview', requirePermission(PERMISSIONS.EXAMS_READ), validate({ params: idParamSchema }), (req, res) => {
+  const exam = examService.getExamById(req.params.id, req.user);
+  let publishStatus;
+  try {
+    const val = examService.validateExamForPublish(req.params.id);
+    publishStatus = { publishable: true, summary: val };
+  } catch (err) {
+    publishStatus = { publishable: false, errors: err.details || [err.message] };
+  }
+  res.json({ success: true, data: { exam, publishStatus } });
+});
+
+// 6. Publish exam (atomic transaction)
+router.post('/exams/:id/publish', requirePermission(PERMISSIONS.EXAMS_PUBLISH), validate({ params: idParamSchema }), (req, res) => {
+  const exam = examService.publishExam(req.params.id, req.user, req);
+  res.json({ success: true, data: exam, message: 'Exam published successfully' });
+});
+
+// 6b. Set exam to LIVE (actively accepting candidate registrations)
+router.post('/exams/:id/live', requirePermission(PERMISSIONS.EXAMS_PUBLISH), validate({ params: idParamSchema }), (req, res) => {
+  const exam = examService.makeExamLive(req.params.id, req.user, req);
+  res.json({ success: true, data: exam, message: 'Exam is now LIVE for candidate attempts' });
+});
+
+// 6c. Close exam (rejects new attempts while preserving existing attempts)
+router.post('/exams/:id/close', requirePermission(PERMISSIONS.EXAMS_PUBLISH), validate({ params: idParamSchema }), (req, res) => {
+  const exam = examService.closeExam(req.params.id, req.user, req);
+  res.json({ success: true, data: exam, message: 'Exam has been closed for new attempts' });
+});
+
+// 6d. Move exam to REVIEW status
+router.post('/exams/:id/review', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ params: idParamSchema }), (req, res) => {
+  const exam = examService.reviewExam(req.params.id, req.user, req);
+  res.json({ success: true, data: exam, message: 'Exam transitioned to REVIEW' });
+});
+
+// 7. Archive exam
+router.post('/exams/:id/archive', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ params: idParamSchema }), (req, res) => {
+  const exam = examService.archiveExam(req.params.id, req.user, req);
+  res.json({ success: true, data: exam, message: 'Exam archived successfully' });
+});
+
+// 8. Create new DRAFT version from existing exam
+router.post('/exams/:id/version', requirePermission(PERMISSIONS.EXAMS_CREATE), validate({ params: idParamSchema }), (req, res) => {
+  const newExam = examService.createExamVersion(req.params.id, req.user, req);
+  res.status(201).json({ success: true, data: newExam, message: 'New exam version created' });
+});
+
+// 8b. Version aliases & lineage list
+router.post('/exams/:id/versions', requirePermission(PERMISSIONS.EXAMS_CREATE), validate({ params: idParamSchema }), (req, res) => {
+  const newExam = examService.createExamVersion(req.params.id, req.user, req);
+  res.status(201).json({ success: true, data: newExam, message: 'New exam version created' });
+});
+
+router.get('/exams/:id/versions', requirePermission(PERMISSIONS.EXAMS_READ), validate({ params: idParamSchema }), (req, res) => {
+  const versions = examService.getExamVersions(req.params.id, req.user);
+  res.json({ success: true, data: versions });
+});
+
+// 9. Add section to exam
+router.post('/exams/:id/sections', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ params: idParamSchema, body: createSectionSchema }), (req, res) => {
+  const exam = examService.addSection(req.params.id, req.body, req.user, req);
+  res.status(201).json({ success: true, data: exam });
+});
+
+// 10. Update section
+router.put('/exams/:id/sections/:sectionId', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ body: updateSectionSchema }), (req, res) => {
+  const exam = examService.updateSection(req.params.id, req.params.sectionId, req.body, req.user, req);
+  res.json({ success: true, data: exam });
+});
+
+// 11. Delete section
+router.delete('/exams/:id/sections/:sectionId', requirePermission(PERMISSIONS.EXAMS_UPDATE), (req, res) => {
+  const exam = examService.deleteSection(req.params.id, req.params.sectionId, req.user, req);
+  res.json({ success: true, data: exam });
+});
+
+// 12. Reorder sections (SortableJS persistence)
+router.put('/exams/:id/sections-reorder', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ params: idParamSchema, body: reorderSectionsSchema }), (req, res) => {
+  const exam = examService.reorderSections(req.params.id, req.body.sectionIds, req.user, req);
+  res.json({ success: true, data: exam });
+});
+
+// 13. Add question to section (MANUAL mode)
+router.post('/exams/:id/sections/:sectionId/questions', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ body: addSectionQuestionSchema }), (req, res) => {
+  const exam = examService.addQuestionToSection(req.params.id, req.params.sectionId, req.body.question_id, req.user, req);
+  res.status(201).json({ success: true, data: exam });
+});
+
+// 14. Remove question from section
+router.delete('/exams/:id/sections/:sectionId/questions/:questionId', requirePermission(PERMISSIONS.EXAMS_UPDATE), (req, res) => {
+  const exam = examService.removeQuestionFromSection(req.params.id, req.params.sectionId, req.params.questionId, req.user, req);
+  res.json({ success: true, data: exam });
+});
+
+// 15. Add rule to section (RULE_BASED or POOL_RANDOM mode)
+router.post('/exams/:id/sections/:sectionId/rules', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ body: addSectionRuleSchema }), (req, res) => {
+  const exam = examService.addRuleToSection(req.params.id, req.params.sectionId, req.body, req.user, req);
+  res.status(201).json({ success: true, data: exam });
+});
+
+// 16. Remove rule from section
+router.delete('/exams/:id/sections/:sectionId/rules/:ruleId', requirePermission(PERMISSIONS.EXAMS_UPDATE), (req, res) => {
+  const exam = examService.removeRuleFromSection(req.params.id, req.params.sectionId, req.params.ruleId, req.user, req);
+  res.json({ success: true, data: exam });
+});
+
+// 17. Configure scholarship slabs for exam
+router.put('/exams/:id/scholarship-slabs', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ params: idParamSchema, body: setScholarshipSlabsSchema }), (req, res) => {
+  const exam = examService.setScholarshipSlabs(req.params.id, req.body.slabs, req.user, req);
+  res.json({ success: true, data: exam });
+});
+
 /* ---------- Config (Settings) ---------- */
 
 router.get('/config', requirePermission(PERMISSIONS.SETTINGS_READ), (req, res) => {
@@ -281,6 +433,28 @@ router.put('/config', requirePermission(PERMISSIONS.SETTINGS_UPDATE), validate(u
     } else {
       setConfig(k, String(v));
     }
+  }
+
+  // Synchronize default exam with config quotas & duration
+  const defaultExam = db.prepare("SELECT id FROM exams WHERE code = 'ASPIRE-SCHOLARSHIP-2026'").get();
+  if (defaultExam) {
+    if (body.duration_minutes !== undefined) {
+      db.prepare("UPDATE exams SET duration_minutes = ? WHERE id = ?").run(Number(body.duration_minutes), defaultExam.id);
+    }
+    const syncRule = (secName, quotaKey) => {
+      if (body[quotaKey] !== undefined) {
+        const sec = db.prepare("SELECT id FROM exam_sections WHERE exam_id = ? AND name COLLATE NOCASE = ?").get(defaultExam.id, secName);
+        if (sec) {
+          const val = Math.max(0, parseInt(body[quotaKey], 10) || 0);
+          db.prepare("UPDATE exam_sections SET total_questions = ? WHERE id = ?").run(val, sec.id);
+          db.prepare("UPDATE exam_question_rules SET count = ? WHERE section_id = ?").run(val, sec.id);
+        }
+      }
+    };
+    syncRule('Aptitude', 'quota_aptitude');
+    syncRule('Technical', 'quota_technical');
+    syncRule('Coding', 'quota_coding');
+    examService.recalculateExamTotals(defaultExam.id);
   }
 
   recordAuditEvent({
