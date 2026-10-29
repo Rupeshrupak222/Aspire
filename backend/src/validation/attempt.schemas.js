@@ -24,9 +24,15 @@ const codeExecutionSchema = z.object({
     .max(102400, 'Source code exceeds maximum permitted size (100KB)')
 });
 
+const codeSubmissionParamsSchema = z.object({
+  token: z.string().trim().min(16, 'Token is too short').max(128, 'Token is too long'),
+  submissionId: z.string().trim().min(5, 'submissionId is required').max(100)
+});
+
 module.exports = {
   attemptTokenParamSchema: tokenParamSchema,
   heartbeatSchema,
   submitSchema,
-  codeExecutionSchema
+  codeExecutionSchema,
+  codeSubmissionParamsSchema
 };

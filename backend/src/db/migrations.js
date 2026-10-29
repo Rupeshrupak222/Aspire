@@ -497,6 +497,52 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_coding_subs_created ON coding_submissions(created_at DESC);
         `);
       }
+    },
+    {
+      version: '008_async_code_execution',
+      up: (d) => {
+        // 1. Transactional outbox table for reliable Redis/BullMQ event publishing
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS outbox_events (
+            id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            aggregate_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'DISPATCHED', 'FAILED')),
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            available_at TEXT NOT NULL DEFAULT (datetime('now')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            processed_at TEXT,
+            last_error_code TEXT,
+            last_error_message TEXT
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_outbox_status_avail ON outbox_events(status, available_at);
+          CREATE INDEX IF NOT EXISTS idx_outbox_aggregate ON outbox_events(aggregate_id);
+          CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox_events(created_at);
+        `);
+
+        // 2. Add lifecycle status and job tracking columns to coding_submissions
+        const addColIfMissing = (table, col, def) => {
+          const cols = d.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+          if (!cols.includes(col)) {
+            d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+          }
+        };
+
+        addColIfMissing('coding_submissions', 'lifecycle_status', "TEXT NOT NULL DEFAULT 'QUEUED'");
+        addColIfMissing('coding_submissions', 'job_id', 'TEXT');
+        addColIfMissing('coding_submissions', 'queued_at', 'TEXT');
+        addColIfMissing('coding_submissions', 'started_at', 'TEXT');
+        addColIfMissing('coding_submissions', 'attempt_count', 'INTEGER NOT NULL DEFAULT 0');
+        addColIfMissing('coding_submissions', 'last_error_code', 'TEXT');
+        addColIfMissing('coding_submissions', 'last_error_at', 'TEXT');
+
+        d.exec(`
+          CREATE INDEX IF NOT EXISTS idx_coding_subs_lifecycle ON coding_submissions(lifecycle_status);
+          CREATE INDEX IF NOT EXISTS idx_coding_subs_job_id ON coding_submissions(job_id);
+        `);
+      }
     }
   ];
 

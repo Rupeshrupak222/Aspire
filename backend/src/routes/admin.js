@@ -3,6 +3,7 @@ const express = require('express');
 const { db, getConfig, setConfig } = require('../db');
 const judge0 = require('../services/judge0');
 const { executionService } = require('../services/code-execution/execution.service');
+const { codeExecutionQueue } = require('../queues/code-execution.queue');
 const { requireAuth, requirePermission } = require('../middleware/admin-auth');
 const validate = require('../middleware/validate');
 const { NotFoundError, ValidationError, AuthorizationError } = require('../errors/app-error');
@@ -65,6 +66,50 @@ router.get('/code-execution/status', requirePermission(PERMISSIONS.QUESTIONS_REA
   });
 });
 
+/* ---------- Code Execution Queue Metrics (Day 10) ---------- */
+router.get('/code-execution/queue-metrics', requirePermission(PERMISSIONS.ANALYTICS_READ), async (req, res, next) => {
+  try {
+    const queueMetrics = await codeExecutionQueue.getQueueMetrics();
+    const outboxCounts = db.prepare(`
+      SELECT status, COUNT(*) AS count
+      FROM outbox_events
+      GROUP BY status
+    `).all();
+
+    const outboxSummary = { PENDING: 0, DISPATCHED: 0, FAILED: 0 };
+    for (const row of outboxCounts) {
+      if (outboxSummary.hasOwnProperty(row.status)) {
+        outboxSummary[row.status] = row.count;
+      }
+    }
+
+    const submissionLifecycleCounts = db.prepare(`
+      SELECT lifecycle_status, COUNT(*) AS count
+      FROM coding_submissions
+      GROUP BY lifecycle_status
+    `).all();
+
+    const lifecycleSummary = { QUEUED: 0, RUNNING: 0, RETRYING: 0, COMPLETED: 0, FAILED: 0 };
+    for (const row of submissionLifecycleCounts) {
+      if (lifecycleSummary.hasOwnProperty(row.lifecycle_status)) {
+        lifecycleSummary[row.lifecycle_status] = row.count;
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        queue: queueMetrics,
+        outbox: outboxSummary,
+        lifecycle: lifecycleSummary,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /* ---------- Attempt Coding Submissions ---------- */
 router.get('/attempts/:id/coding-submissions', requirePermission(PERMISSIONS.RESULTS_READ), validate({ params: idParamSchema }), (req, res, next) => {
   const att = db.prepare('SELECT * FROM attempts WHERE id = ?').get(req.params.id);
@@ -76,6 +121,8 @@ router.get('/attempts/:id/coding-submissions', requirePermission(PERMISSIONS.RES
 
   const rows = db.prepare(`
     SELECT cs.id, cs.attempt_id, cs.question_id, cs.language, cs.submission_status,
+           cs.lifecycle_status, cs.job_id, cs.queued_at, cs.started_at, cs.attempt_count,
+           cs.last_error_code, cs.last_error_at,
            cs.provider, cs.source_hash, cs.test_cases_passed, cs.test_cases_total,
            cs.score, cs.execution_time_ms, cs.memory_used_kb, cs.error_message,
            cs.created_at, cs.completed_at,

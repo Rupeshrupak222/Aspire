@@ -15,6 +15,8 @@
 // 13. End-to-end attempt submission & combined grading (MCQ + Code -> Scholarship slab).
 // 14. Optional live smoke test when ONLINECOMPILER_LIVE_TEST=true.
 
+process.env.CODE_EXECUTION_SYNC = 'true';
+
 const assert = require('assert');
 const http = require('http');
 const crypto = require('crypto');

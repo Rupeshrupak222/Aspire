@@ -8,13 +8,20 @@ const validate = require('../middleware/validate');
 const asyncHandler = require('../utils/async-handler');
 const { NotFoundError, ConflictError, AppError } = require('../errors/app-error');
 const { registerSchema } = require('../validation/student.schemas');
-const { attemptTokenParamSchema, heartbeatSchema, submitSchema, codeExecutionSchema } = require('../validation/attempt.schemas');
+const { attemptTokenParamSchema, heartbeatSchema, submitSchema, codeExecutionSchema, codeSubmissionParamsSchema } = require('../validation/attempt.schemas');
 const { certificateParamSchema } = require('../validation/certificate.schemas');
 const { registerLimiter, submitLimiter, certificateLimiter, codeExecutionLimiter } = require('../security/rate-limit');
 const examService = require('../services/exam.service');
 const shuffleService = require('../services/shuffle.service');
 const snapshotService = require('../services/snapshot.service');
 const { executionService } = require('../services/code-execution/execution.service');
+const outboxDispatcher = require('../workers/outbox-dispatcher');
+const {
+  SUBMISSION_LIFECYCLE,
+  EXECUTION_STATUS,
+  OUTBOX_STATUS,
+  normalizeLanguage
+} = require('../services/code-execution/constants');
 
 const router = express.Router();
 
@@ -305,17 +312,19 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
 
     const token = randHex(24);
     const expires_at = new Date(Date.now() + durationMin * 60000).toISOString();
+    const assignedOrgId = targetExam ? targetExam.organization_id : null;
     db.prepare(`
       INSERT INTO attempts (
-        token, student_id, exam_id, exam_version, expires_at,
+        token, student_id, exam_id, exam_version, organization_id, expires_at,
         question_ids_json, shuffle_map_json, exam_snapshot_json, questions_snapshot_json,
         shuffle_seed, snapshot_hash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       token,
       studentId,
       targetExamId,
       targetExam ? targetExam.version : 1,
+      assignedOrgId,
       expires_at,
       JSON.stringify(selected),
       JSON.stringify(shuffleMap || maps),
@@ -478,18 +487,181 @@ router.post('/attempt/:token/code-submit', codeExecutionLimiter, validate({ para
   }
 
   const { questionId, language, sourceCode } = req.body;
-  const result = await executionService.submitCandidateCode({
-    attempt: att,
-    questionId,
-    language,
-    sourceCode,
-    requestId: req.id
+
+  // Backwards compatibility for synchronous execution when explicitly requested
+  const isSync = req.query.sync === 'true' || req.body.sync === true || process.env.CODE_EXECUTION_SYNC === 'true';
+  if (isSync) {
+    const result = await executionService.submitCandidateCode({
+      attempt: att,
+      questionId,
+      language,
+      sourceCode,
+      requestId: req.id
+    });
+
+    return res.json({
+      success: true,
+      data: result
+    });
+  }
+
+  // --- Asynchronous Execution Flow (Day 10) ---
+  if (att.status === 'submitted') {
+    throw new ConflictError('This assessment has already been submitted', 'ATTEMPT_ALREADY_SUBMITTED');
+  }
+  if (att.status !== 'started') {
+    throw new ConflictError(`Attempt is in status '${att.status}' and cannot accept submissions`, 'ATTEMPT_NOT_ACTIVE');
+  }
+  const expiresAt = new Date(att.expires_at).getTime();
+  if (Date.now() > expiresAt) {
+    throw new ConflictError('Assessment duration has expired', 'ATTEMPT_EXPIRED');
+  }
+
+  const question = executionService._resolveQuestionFromAttempt(att, questionId);
+  if (question.type !== 'code') {
+    throw new ValidationError('Question is not a coding question', 'INVALID_QUESTION_TYPE');
+  }
+
+  executionService.validateSourceCode(sourceCode);
+  const canonicalLang = normalizeLanguage(language);
+  const sourceHash = crypto.createHash('sha256').update(sourceCode || '').digest('hex');
+
+  // Idempotency check: Return existing completed/queued submission if submitted within last 15s with identical code
+  const recent = db.prepare(`
+    SELECT * FROM coding_submissions
+    WHERE attempt_id = ? AND question_id = ? AND language = ? AND source_hash = ?
+      AND submission_status NOT IN ('SYSTEM_ERROR', 'PROVIDER_ERROR')
+      AND created_at >= datetime('now', '-15 seconds')
+    ORDER BY created_at DESC LIMIT 1
+  `).get(att.id, question.id, canonicalLang, sourceHash);
+
+  if (recent) {
+    const isDone = recent.lifecycle_status === SUBMISSION_LIFECYCLE.COMPLETED;
+    return res.status(isDone ? 200 : 202).json({
+      success: true,
+      submissionId: recent.id,
+      status: recent.lifecycle_status,
+      verdict: recent.submission_status,
+      statusUrl: `/api/attempt/${req.params.token}/code-submissions/${recent.id}`,
+      retryAfterMs: 1500,
+      idempotent: true
+    });
+  }
+
+  const submissionId = 'csub_' + crypto.randomBytes(12).toString('hex');
+  const outboxId = 'outbox_' + crypto.randomBytes(12).toString('hex');
+  const providerName = executionService.getActiveProvider().name;
+
+  // Atomic SQLite Transaction: Insert durable submission record + outbox event
+  const persistJob = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO coding_submissions (
+        id, attempt_id, question_id, organization_id, language,
+        submission_status, lifecycle_status, provider, job_id, source_hash, source_code,
+        queued_at, attempt_count
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 0)
+    `).run(
+      submissionId,
+      att.id,
+      question.id,
+      att.organization_id || null,
+      canonicalLang,
+      EXECUTION_STATUS.PENDING,
+      SUBMISSION_LIFECYCLE.QUEUED,
+      providerName,
+      submissionId,
+      sourceHash,
+      sourceCode
+    );
+
+    db.prepare(`
+      INSERT INTO outbox_events (
+        id, event_type, aggregate_id, payload_json, status, attempt_count, available_at
+      ) VALUES (?, ?, ?, ?, ?, 0, datetime('now'))
+    `).run(
+      outboxId,
+      'CODE_EXECUTION_REQUESTED',
+      submissionId,
+      JSON.stringify({
+        submissionId,
+        attemptId: att.id,
+        questionId: question.id,
+        submissionType: 'FINAL'
+      }),
+      OUTBOX_STATUS.PENDING
+    );
   });
 
-  res.json({
-    success: true,
-    data: result
+  persistJob();
+
+  // Trigger immediate dispatch (non-blocking)
+  outboxDispatcher.dispatchImmediate(submissionId).catch((err) => {
+    req.log?.warn?.({ submissionId, err: err.message }, 'Failed immediate outbox dispatch');
   });
+
+  res.status(202).json({
+    success: true,
+    submissionId,
+    status: SUBMISSION_LIFECYCLE.QUEUED,
+    statusUrl: `/api/attempt/${req.params.token}/code-submissions/${submissionId}`,
+    retryAfterMs: 1500
+  });
+}));
+
+// Poll status of an asynchronous coding submission
+router.get('/attempt/:token/code-submissions/:submissionId', validate({ params: codeSubmissionParamsSchema }), asyncHandler(async (req, res, next) => {
+  const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
+  if (!att) return next(new NotFoundError('Attempt not found'));
+
+  // Snapshot integrity check
+  try {
+    snapshotService.verifySnapshotIntegrity(att);
+  } catch (err) {
+    return next(err);
+  }
+
+  const sub = db.prepare(`
+    SELECT * FROM coding_submissions
+    WHERE id = ? AND attempt_id = ?
+  `).get(req.params.submissionId, att.id);
+
+  if (!sub) {
+    return next(new NotFoundError('Submission not found'));
+  }
+
+  let marks = 1;
+  try {
+    const question = executionService._resolveQuestionFromAttempt(att, sub.question_id);
+    marks = question.marks || 1;
+  } catch {}
+
+  const isPending = sub.lifecycle_status === SUBMISSION_LIFECYCLE.QUEUED ||
+                    sub.lifecycle_status === SUBMISSION_LIFECYCLE.RUNNING ||
+                    sub.lifecycle_status === SUBMISSION_LIFECYCLE.RETRYING;
+
+  const payload = {
+    success: true,
+    submissionId: sub.id,
+    status: sub.lifecycle_status,
+    verdict: sub.submission_status,
+    language: sub.language,
+    testsPassed: sub.test_cases_passed,
+    testsTotal: sub.test_cases_total,
+    score: sub.score,
+    marks,
+    executionTimeMs: sub.execution_time_ms,
+    error: sub.error_message,
+    createdAt: sub.created_at,
+    queuedAt: sub.queued_at,
+    startedAt: sub.started_at,
+    completedAt: sub.completed_at
+  };
+
+  if (isPending) {
+    payload.retryAfterMs = 1500;
+  }
+
+  res.json(payload);
 }));
 
 // Submit + grade (idempotent + concurrency locked)
@@ -506,6 +678,11 @@ router.post('/attempt/:token/submit', submitLimiter, validate({ params: attemptT
 
   const student = db.prepare('SELECT * FROM students WHERE id = ?').get(att.student_id);
   if (att.status === 'submitted') return res.json(resultSummary(att, student ? student.name : ''));
+
+  // Drain and wait for any pending in-flight coding submissions for this attempt
+  try {
+    await outboxDispatcher.drainAttemptSubmissions(att.id, 8000);
+  } catch {}
 
   // Atomic state lock: transitions 'started' -> 'grading'
   const lock = db.prepare("UPDATE attempts SET status = 'grading' WHERE id = ? AND status = 'started'").run(att.id);
@@ -563,14 +740,35 @@ router.post('/attempt/:token/submit', submitLimiter, validate({ params: attemptT
       }
       detail.push({ id: q.id, category: q.category, type: 'mcq', marks: q.marks, earned });
     } else {
-      const src = (codeAnswers[qid] ?? codeAnswers[String(qid)] ?? '').toString();
-      const tcs = q.test_cases || (q.test_cases_json ? JSON.parse(q.test_cases_json) : []);
-      if (src.trim() && judge0.isConfigured() && tcs.length) {
-        const g = await judge0.gradeCodeQuestion({ source_code: src, language_id: q.language_id || 71, test_cases: tcs });
-        earned = Math.round((q.marks * (g.total ? g.passed / g.total : 0)) * 100) / 100;
-        detail.push({ id: q.id, category: q.category, type: 'code', marks: q.marks, earned, passed: g.passed, total: g.total, error: g.error || null });
+      // 1. Authoritative check: Look up completed coding submission from coding_submissions
+      const sub = db.prepare(`
+        SELECT * FROM coding_submissions
+        WHERE attempt_id = ? AND question_id = ? AND lifecycle_status = 'COMPLETED'
+        ORDER BY score DESC, completed_at DESC LIMIT 1
+      `).get(att.id, q.id);
+
+      if (sub) {
+        earned = sub.score;
+        detail.push({
+          id: q.id,
+          category: q.category,
+          type: 'code',
+          marks: q.marks,
+          earned: sub.score,
+          passed: sub.test_cases_passed,
+          total: sub.test_cases_total,
+          error: sub.error_message || null
+        });
       } else {
-        detail.push({ id: q.id, category: q.category, type: 'code', marks: q.marks, earned: 0, passed: 0, total: tcs.length, error: src.trim() ? 'judge0_unconfigured' : 'no_answer' });
+        const src = (codeAnswers[qid] ?? codeAnswers[String(qid)] ?? '').toString();
+        const tcs = q.test_cases || (q.test_cases_json ? JSON.parse(q.test_cases_json) : []);
+        if (src.trim() && judge0.isConfigured() && tcs.length) {
+          const g = await judge0.gradeCodeQuestion({ source_code: src, language_id: q.language_id || 71, test_cases: tcs });
+          earned = Math.round((q.marks * (g.total ? g.passed / g.total : 0)) * 100) / 100;
+          detail.push({ id: q.id, category: q.category, type: 'code', marks: q.marks, earned, passed: g.passed, total: g.total, error: g.error || null });
+        } else {
+          detail.push({ id: q.id, category: q.category, type: 'code', marks: q.marks, earned: 0, passed: 0, total: tcs.length, error: src.trim() ? 'no_completed_submission' : 'no_answer' });
+        }
       }
     }
     score += earned;

@@ -271,9 +271,51 @@ async function handleSubmitCode(q) {
     localStorage.setItem(`aspire_code_${token}_${q.id}`, sourceCode);
     markPalette();
 
-    codeResults[q.id] = { type: 'submit', data: res.data || res };
-    renderCodeResultUI(codeResults[q.id]);
-    toast('Coding solution evaluated and saved.');
+    const statusUrl = res.statusUrl || (res.submissionId ? `/api/attempt/${token}/code-submissions/${res.submissionId}` : null);
+
+    if (statusUrl && (res.status === 'QUEUED' || res.status === 'RUNNING')) {
+      renderCodeResultUI({
+        type: 'submit',
+        data: { status: res.status }
+      });
+
+      // Poll until COMPLETED or FAILED (with bounded backoff)
+      const maxAttempts = 30;
+      let attempts = 0;
+      let finalData = null;
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        await new Promise((r) => setTimeout(r, res.retryAfterMs || 1500));
+        try {
+          const pollRes = await api(statusUrl);
+          if (pollRes.status === 'RUNNING') {
+            renderCodeResultUI({
+              type: 'submit',
+              data: { status: 'RUNNING' }
+            });
+          } else if (pollRes.status === 'COMPLETED' || pollRes.status === 'FAILED') {
+            finalData = pollRes;
+            break;
+          }
+        } catch (pollErr) {
+          // Transient network blip during polling: continue
+        }
+      }
+
+      if (finalData) {
+        const displayStatus = finalData.verdict && finalData.verdict !== 'PENDING' ? finalData.verdict : finalData.status;
+        codeResults[q.id] = { type: 'submit', data: { ...finalData, status: displayStatus } };
+        renderCodeResultUI(codeResults[q.id]);
+        toast(finalData.verdict === 'ACCEPTED' ? '🎉 Solution accepted!' : 'Coding solution evaluated and recorded.');
+      } else {
+        toast('Evaluation queued. Your solution is safely stored in our database.');
+      }
+    } else {
+      codeResults[q.id] = { type: 'submit', data: res.data || res };
+      renderCodeResultUI(codeResults[q.id]);
+      toast('Coding solution evaluated and saved.');
+    }
   } catch (err) {
     const msg = (err.data && (err.data.message || err.data.error)) || err.message || 'Submission failed';
     codeResults[q.id] = { type: 'submit', error: msg };
@@ -344,6 +386,13 @@ function renderCodeResultUI(resultObj) {
     if (d.error && (!d.results || d.results.length === 0)) {
       bodyHtml += `<div class="console-output">${esc(d.error)}</div>`;
     }
+  } else if (status === 'QUEUED' || status === 'RUNNING') {
+    // In-flight background job
+    bodyHtml += `
+      <div style="text-align:center;padding:12px;font-size:14px;color:var(--muted)">
+        ${status === 'QUEUED' ? '⏳ Submission queued. Waiting for worker assignment…' : '⚡ Worker evaluating private test suite in isolated runtime…'}
+      </div>
+    `;
   } else {
     // "Submit Solution" output
     bodyHtml += `
