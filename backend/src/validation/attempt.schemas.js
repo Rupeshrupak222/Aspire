@@ -14,8 +14,19 @@ const submitSchema = z.object({
   tabSwitches: z.number().int().min(0).max(100000).optional().default(0)
 });
 
+const codeExecutionSchema = z.object({
+  questionId: z.union([
+    z.number().int().positive(),
+    z.string().regex(/^\d+$/).transform(Number)
+  ], { required_error: 'questionId is required' }),
+  language: z.string({ required_error: 'language is required' }).trim().min(1, 'language cannot be empty').max(50),
+  sourceCode: z.string({ required_error: 'sourceCode is required' })
+    .max(102400, 'Source code exceeds maximum permitted size (100KB)')
+});
+
 module.exports = {
   attemptTokenParamSchema: tokenParamSchema,
   heartbeatSchema,
-  submitSchema
+  submitSchema,
+  codeExecutionSchema
 };

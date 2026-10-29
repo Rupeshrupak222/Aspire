@@ -8,12 +8,13 @@ const validate = require('../middleware/validate');
 const asyncHandler = require('../utils/async-handler');
 const { NotFoundError, ConflictError, AppError } = require('../errors/app-error');
 const { registerSchema } = require('../validation/student.schemas');
-const { attemptTokenParamSchema, heartbeatSchema, submitSchema } = require('../validation/attempt.schemas');
+const { attemptTokenParamSchema, heartbeatSchema, submitSchema, codeExecutionSchema } = require('../validation/attempt.schemas');
 const { certificateParamSchema } = require('../validation/certificate.schemas');
-const { registerLimiter, submitLimiter, certificateLimiter } = require('../security/rate-limit');
+const { registerLimiter, submitLimiter, certificateLimiter, codeExecutionLimiter } = require('../security/rate-limit');
 const examService = require('../services/exam.service');
 const shuffleService = require('../services/shuffle.service');
 const snapshotService = require('../services/snapshot.service');
+const { executionService } = require('../services/code-execution/execution.service');
 
 const router = express.Router();
 
@@ -437,6 +438,59 @@ router.post('/attempt/:token/heartbeat', validate({ params: attemptTokenParamSch
   }
   res.json({ ok: true });
 });
+
+// Run candidate code against public/sample test cases only (interactive IDE feedback)
+router.post('/attempt/:token/code-run', codeExecutionLimiter, validate({ params: attemptTokenParamSchema, body: codeExecutionSchema }), asyncHandler(async (req, res, next) => {
+  const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
+  if (!att) return next(new NotFoundError('Attempt not found'));
+
+  // Snapshot integrity check
+  try {
+    snapshotService.verifySnapshotIntegrity(att);
+  } catch (err) {
+    return next(err);
+  }
+
+  const { questionId, language, sourceCode } = req.body;
+  const result = await executionService.runCandidateCode({
+    attempt: att,
+    questionId,
+    language,
+    sourceCode
+  });
+
+  res.json({
+    success: true,
+    data: result
+  });
+}));
+
+// Submit candidate code for a specific question (evaluates all test cases, records in DB)
+router.post('/attempt/:token/code-submit', codeExecutionLimiter, validate({ params: attemptTokenParamSchema, body: codeExecutionSchema }), asyncHandler(async (req, res, next) => {
+  const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
+  if (!att) return next(new NotFoundError('Attempt not found'));
+
+  // Snapshot integrity check
+  try {
+    snapshotService.verifySnapshotIntegrity(att);
+  } catch (err) {
+    return next(err);
+  }
+
+  const { questionId, language, sourceCode } = req.body;
+  const result = await executionService.submitCandidateCode({
+    attempt: att,
+    questionId,
+    language,
+    sourceCode,
+    requestId: req.id
+  });
+
+  res.json({
+    success: true,
+    data: result
+  });
+}));
 
 // Submit + grade (idempotent + concurrency locked)
 router.post('/attempt/:token/submit', submitLimiter, validate({ params: attemptTokenParamSchema, body: submitSchema }), asyncHandler(async (req, res, next) => {

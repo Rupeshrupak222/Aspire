@@ -67,6 +67,23 @@ const authLoginLimiter = rateLimit({
   handler: standardLimiterHandler
 });
 
+// 7. Dedicated coding execution limiter (prevent API spam & provider exhaustion)
+const codeExecutionLimiter = rateLimit({
+  windowMs: 60 * 1000,      // 1 minute
+  max: isTest ? 5000 : 25,   // 25 execution requests per IP per min
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'RATE_LIMITED',
+      code: 'RATE_LIMITED',
+      message: 'Too many code execution requests. Please wait a moment before trying again.',
+      requestId: req.id || undefined
+    });
+  }
+});
+
 module.exports = {
   publicApiLimiter,
   registerLimiter,
@@ -74,5 +91,6 @@ module.exports = {
   adminAuthLimiter,
   certificateLimiter,
   authLoginLimiter,
+  codeExecutionLimiter,
   standardLimiterHandler
 };

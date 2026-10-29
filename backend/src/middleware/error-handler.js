@@ -40,9 +40,14 @@ function errorHandler(err, req, res, next) {
     }
   }
 
-  // 3. Map Judge0 / external service errors
-  if (err && typeof err.message === 'string' && (err.message.includes('Judge0 HTTP') || err.message.includes('Judge0 is not configured'))) {
-    error = new ExternalServiceError('Code execution engine is temporarily unavailable.', 'JUDGE0_UNAVAILABLE');
+  // 3. Map Judge0 / OnlineCompiler / external service errors
+  if (err && typeof err.message === 'string' && (
+    err.message.includes('Judge0 HTTP') ||
+    err.message.includes('Judge0 is not configured') ||
+    err.message.includes('OnlineCompiler HTTP') ||
+    err.message.includes('OnlineCompiler execution engine is not configured')
+  )) {
+    error = new ExternalServiceError('Code execution engine is temporarily unavailable.', 'CODE_EXECUTION_UNAVAILABLE');
   }
 
   // 4. Ensure error is an AppError instance

@@ -14,8 +14,12 @@ class AppError extends Error {
 }
 
 class ValidationError extends AppError {
-  constructor(message = 'Request validation failed', fields = null) {
-    super(message, 400, 'VALIDATION_ERROR', fields);
+  constructor(message = 'Request validation failed', fields = null, code = 'VALIDATION_ERROR') {
+    if (typeof fields === 'string' && code === 'VALIDATION_ERROR') {
+      super(message, 400, fields, null);
+    } else {
+      super(message, 400, code, fields);
+    }
   }
 }
 

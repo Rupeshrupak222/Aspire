@@ -17,6 +17,12 @@ if (!process.env.AUTH_SECRET && !process.env.JWT_SECRET) {
   process.env.AUTH_SECRET = crypto.randomBytes(32).toString('hex');
 }
 
+// OnlineCompiler API key validation on startup (never logs or exposes the secret)
+if (process.env.ONLINECOMPILER_REQUIRED === 'true' && !process.env.ONLINECOMPILER_API_KEY) {
+  console.error('[FATAL] ONLINECOMPILER_API_KEY environment variable is required but missing!');
+  process.exit(1);
+}
+
 seedIfEmpty(db);
 
 const app = createApp();

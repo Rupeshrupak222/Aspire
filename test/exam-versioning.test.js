@@ -387,16 +387,21 @@ async function run() {
     const origText = firstQuestions[0].question_text;
 
     // Admin updates question in Question Bank
-    db.prepare("UPDATE questions SET question_text = 'COMPLETELY MUTATED QUESTION TEXT IN LIVE BANK', marks = 999 WHERE id = ?").run(targetQId);
+    try {
+      db.prepare("UPDATE questions SET question_text = 'COMPLETELY MUTATED QUESTION TEXT IN LIVE BANK', marks = 999 WHERE id = ?").run(targetQId);
 
-    // Candidate reloads attempt
-    const afterMutationRes = await request('GET', `/api/attempt/${token}`);
-    assert.strictEqual(afterMutationRes.status, 200);
-    const afterQ = afterMutationRes.data.questions.find(q => q.id === targetQId);
+      // Candidate reloads attempt
+      const afterMutationRes = await request('GET', `/api/attempt/${token}`);
+      assert.strictEqual(afterMutationRes.status, 200);
+      const afterQ = afterMutationRes.data.questions.find(q => q.id === targetQId);
 
-    assert.strictEqual(afterQ.question_text, origText, 'Candidate continues receiving frozen snapshot question text');
-    assert.notStrictEqual(afterQ.question_text, 'COMPLETELY MUTATED QUESTION TEXT IN LIVE BANK', 'Live question edit did not contaminate attempt');
-    assert.strictEqual(afterQ.marks, 1, 'Marks remain frozen at 1 mark');
+      assert.strictEqual(afterQ.question_text, origText, 'Candidate continues receiving frozen snapshot question text');
+      assert.notStrictEqual(afterQ.question_text, 'COMPLETELY MUTATED QUESTION TEXT IN LIVE BANK', 'Live question edit did not contaminate attempt');
+      assert.strictEqual(afterQ.marks, 1, 'Marks remain frozen at 1 mark');
+    } finally {
+      // Clean up mutation so future test runs remain deterministic
+      db.prepare("UPDATE questions SET question_text = ?, marks = 1 WHERE id = ?").run(origText, targetQId);
+    }
     console.log('  PASS  Candidate assessment isolated from subsequent Question Bank mutations');
 
     /* ----------------------------------------------------

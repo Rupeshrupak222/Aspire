@@ -147,3 +147,83 @@ pre.q { background: #F3F4F6; padding: 12px; border-radius: 8px; white-space: pre
 .handle { user-select: none; transition: transform 0.15s ease; cursor: grab; }
 .handle:active { cursor: grabbing; transform: scale(1.15); }
 
+/* Coding assessment editor & results UI */
+.code-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 12px 0 8px 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.code-lang-select {
+  max-width: 200px;
+  padding: 7px 10px;
+  font-size: 14px;
+}
+.code-actions {
+  display: flex;
+  gap: 8px;
+}
+.code-actions .btn {
+  margin-top: 0;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.code-results {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fdfdfd;
+  overflow: hidden;
+}
+.code-results-header {
+  padding: 10px 14px;
+  background: #f3f4f6;
+  border-bottom: 1px solid var(--line);
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.code-results-body {
+  padding: 14px;
+}
+.test-case-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: #fff;
+  font-size: 13px;
+}
+.test-case-card.pass {
+  border-left: 4px solid var(--ok);
+}
+.test-case-card.fail {
+  border-left: 4px solid var(--bad);
+}
+.console-output {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  font-size: 13px;
+  white-space: pre-wrap;
+  margin-top: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.badge-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  display: inline-block;
+}
+.badge-status.pass { background: #dcfce7; color: #166534; }
+.badge-status.fail { background: #fee2e2; color: #991b1b; }
+.badge-status.warn { background: #fef3c7; color: #92400e; }
+.badge-status.info { background: #e0f2fe; color: #0369a1; }

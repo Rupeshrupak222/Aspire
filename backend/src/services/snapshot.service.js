@@ -138,8 +138,9 @@ function createQuestionSnapshots(questionsWithPool, shuffleMap = {}) {
     } else {
       snap.code_starter = q.code_starter || '';
       snap.language_id = q.language_id || 71;
+      snap.language = q.language || 'python';
 
-      // Full test cases for Judge0 grading
+      // Full test cases for code execution engine
       let rawTcs = [];
       if (Array.isArray(q.test_cases)) {
         rawTcs = q.test_cases;
@@ -189,6 +190,7 @@ function sanitizeCandidateQuestions(frozenQuestions) {
     } else {
       out.code_starter = q.code_starter || '';
       out.language_id = q.language_id || 71;
+      out.language = q.language || 'python';
 
       // STRICT: Only public / sample test cases are delivered to candidate browser
       if (Array.isArray(q.test_cases)) {
@@ -196,7 +198,7 @@ function sanitizeCandidateQuestions(frozenQuestions) {
           .filter(tc => !tc.is_hidden && !tc.hidden)
           .map(tc => ({
             input: tc.input,
-            expected_output: tc.expected_output
+            expected_output: tc.expected_output !== undefined ? tc.expected_output : tc.expected
           }));
       } else {
         out.sample_test_cases = [];

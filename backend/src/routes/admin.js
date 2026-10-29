@@ -2,6 +2,7 @@
 const express = require('express');
 const { db, getConfig, setConfig } = require('../db');
 const judge0 = require('../services/judge0');
+const { executionService } = require('../services/code-execution/execution.service');
 const { requireAuth, requirePermission } = require('../middleware/admin-auth');
 const validate = require('../middleware/validate');
 const { NotFoundError, ValidationError, AuthorizationError } = require('../errors/app-error');
@@ -54,6 +55,41 @@ router.use(requireAuth);
 /* ---------- Judge0 Status ---------- */
 router.get('/judge0-status', requirePermission(PERMISSIONS.QUESTIONS_READ), (req, res) => {
   res.json(judge0.status());
+});
+
+/* ---------- Code Execution Engine Status ---------- */
+router.get('/code-execution/status', requirePermission(PERMISSIONS.QUESTIONS_READ), (req, res) => {
+  res.json({
+    success: true,
+    data: executionService.getStatus()
+  });
+});
+
+/* ---------- Attempt Coding Submissions ---------- */
+router.get('/attempts/:id/coding-submissions', requirePermission(PERMISSIONS.RESULTS_READ), validate({ params: idParamSchema }), (req, res, next) => {
+  const att = db.prepare('SELECT * FROM attempts WHERE id = ?').get(req.params.id);
+  if (!att) return next(new NotFoundError('Attempt not found'));
+
+  if (req.user.role !== ROLES.SUPER_ADMIN && req.user.organization_id && att.organization_id !== req.user.organization_id) {
+    return next(new AuthorizationError('Cannot view submissions from another organization'));
+  }
+
+  const rows = db.prepare(`
+    SELECT cs.id, cs.attempt_id, cs.question_id, cs.language, cs.submission_status,
+           cs.provider, cs.source_hash, cs.test_cases_passed, cs.test_cases_total,
+           cs.score, cs.execution_time_ms, cs.memory_used_kb, cs.error_message,
+           cs.created_at, cs.completed_at,
+           q.title as question_title, q.category, q.marks as question_marks
+    FROM coding_submissions cs
+    JOIN questions q ON q.id = cs.question_id
+    WHERE cs.attempt_id = ?
+    ORDER BY cs.created_at DESC
+  `).all(req.params.id);
+
+  res.json({
+    success: true,
+    data: rows
+  });
 });
 
 /* ---------- Question Bank 2.0 CRUD & Lifecycle ---------- */

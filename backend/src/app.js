@@ -10,6 +10,7 @@ const { publicApiLimiter } = require('./security/rate-limit');
 const publicRoutes = require('./routes/public');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const { executionService } = require('./services/code-execution/execution.service');
 
 function createApp() {
   const app = express();
@@ -54,13 +55,18 @@ function createApp() {
         }
       });
     }
+    const codeStatus = executionService.getStatus();
     res.json({
       ok: true,
       success: true,
       time: new Date().toISOString(),
       data: {
         database: 'ok',
-        status: 'UP'
+        status: 'UP',
+        codeExecution: {
+          provider: codeStatus.provider,
+          configured: codeStatus.configured
+        }
       }
     });
   };

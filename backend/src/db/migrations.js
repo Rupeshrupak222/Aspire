@@ -464,6 +464,39 @@ function runMigrations(db) {
           }
         }
       }
+    },
+    {
+      version: '007_coding_execution',
+      up: (d) => {
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS coding_submissions (
+            id TEXT PRIMARY KEY,
+            attempt_id INTEGER NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+            question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE RESTRICT,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+            language TEXT NOT NULL,
+            submission_status TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            provider_submission_id TEXT,
+            source_hash TEXT NOT NULL,
+            source_code TEXT,
+            test_cases_passed INTEGER NOT NULL DEFAULT 0,
+            test_cases_total INTEGER NOT NULL DEFAULT 0,
+            score REAL NOT NULL DEFAULT 0,
+            execution_time_ms INTEGER,
+            memory_used_kb INTEGER,
+            error_message TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            completed_at TEXT
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_coding_subs_attempt ON coding_submissions(attempt_id);
+          CREATE INDEX IF NOT EXISTS idx_coding_subs_question ON coding_submissions(question_id);
+          CREATE INDEX IF NOT EXISTS idx_coding_subs_org ON coding_submissions(organization_id);
+          CREATE INDEX IF NOT EXISTS idx_coding_subs_status ON coding_submissions(submission_status);
+          CREATE INDEX IF NOT EXISTS idx_coding_subs_created ON coding_submissions(created_at DESC);
+        `);
+      }
     }
   ];
 
