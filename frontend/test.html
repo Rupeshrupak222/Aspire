@@ -1,38 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aspire by Adyapan — Test</title>
-<link rel="stylesheet" href="/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aspire by Adyapan — Test</title>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
+
 <body>
-<div class="timer" id="timerBar">
-  <div><span id="testTitle">Aspire Scholarship Test</span> · <span id="studentName" style="font-weight:400"></span></div>
-  <div style="display:flex;align-items:center;gap:12px">
-    <div id="syncStatusBadge" class="sync-badge synced" title="Connection & sync status">🟢 Synced</div>
-    <div>⏱ <span id="timerText">--:--</span></div>
-  </div>
-</div>
-<div class="wrap">
-  <div class="card">
-    <div id="qcount" style="color:var(--muted);font-size:14px"></div>
-    <div class="palette" id="palette"></div>
-    <div id="qbox"></div>
-    <div class="navbtns">
-      <button id="prevBtn" class="btn ghost">← Previous</button>
-      <button id="nextBtn" class="btn ghost">Next →</button>
+  <div class="timer" id="timerBar">
+    <div><span id="testTitle">Aspire Scholarship Test</span> · <span id="studentName" style="font-weight:400"></span>
     </div>
-    <div style="text-align:center"><button id="submitBtn" class="btn">Submit Test</button></div>
-    <div id="testErr" class="err"></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="syncStatusBadge" class="sync-badge synced" title="Connection & sync status">🟢 Synced</div>
+      <div>⏱ <span id="timerText">--:--</span></div>
+    </div>
   </div>
-</div>
-<script src="/js/config.js"></script>
-<script src="/js/common.js"></script>
-<script src="/js/vendor/idb-keyval.js"></script>
-<script src="/js/assessment-storage.js"></script>
-<script src="/js/network-recovery.js"></script>
-<script src="/js/proctoring.js"></script>
-<script src="/js/test.js"></script>
+  <div class="wrap">
+    <div id="multiTabBanner" style="display:none;background:#fef2f2;border:1px solid #f87171;color:#991b1b;padding:12px 16px;border-radius:8px;margin-bottom:16px;text-align:center;">
+      <strong>⚠️ Assessment Active in Another Window or Tab</strong>
+      <p style="margin:6px 0 10px 0;font-size:13px;">This test session is active in another tab. To prevent duplicate submissions and answer overwrites, actions here are disabled.</p>
+      <button id="claimSessionBtn" class="btn small" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">Take Over Session in This Tab</button>
+    </div>
+    <div class="card">
+      <div id="qcount" style="color:var(--muted);font-size:14px"></div>
+      <div class="palette" id="palette"></div>
+      <div id="qbox"></div>
+      <div class="navbtns">
+        <button id="prevBtn" class="btn ghost">← Previous</button>
+        <button id="nextBtn" class="btn ghost">Next →</button>
+      </div>
+      <div style="text-align:center"><button id="submitBtn" class="btn">Submit Test</button></div>
+      <div id="testErr" class="err"></div>
+    </div>
+  </div>
+  <script src="/js/config.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/vendor/idb-keyval.js"></script>
+  <script src="/js/assessment-storage.js"></script>
+  <script src="/js/network-recovery.js"></script>
+  <script src="/js/tab-coordinator.js"></script>
+  <script src="/js/proctoring.js"></script>
+  <script src="/js/test.js"></script>
 </body>
+
 </html>

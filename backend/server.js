@@ -30,6 +30,18 @@ const PORT = process.env.PORT || 3000;
 
 if (require.main === module) {
   const { closeDatabase } = require('./src/db');
+  const timerSubmissionService = require('./src/services/timer-submission.service');
+
+  // Reconcile any interrupted or expired assessments on server boot
+  timerSubmissionService.reconcileExpiredAttempts().catch((err) => {
+    console.warn('[aspire] Warning during initial attempt reconciliation:', err.message);
+  });
+
+  const reconcileInterval = setInterval(() => {
+    timerSubmissionService.reconcileExpiredAttempts().catch(() => {});
+  }, 60000);
+  reconcileInterval.unref();
+
   const server = app.listen(PORT, () => console.log(`[aspire] listening on port ${PORT}`));
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {

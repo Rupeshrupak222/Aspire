@@ -18,6 +18,7 @@ const shuffleService = require('../services/shuffle.service');
 const snapshotService = require('../services/snapshot.service');
 const proctoringRiskService = require('../services/proctoring-risk.service');
 const sessionRecoveryService = require('../services/session-recovery.service');
+const timerSubmissionService = require('../services/timer-submission.service');
 const { executionService } = require('../services/code-execution/execution.service');
 const outboxDispatcher = require('../workers/outbox-dispatcher');
 const {
@@ -317,21 +318,27 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
     }
 
     const token = randHex(24);
-    const expires_at = new Date(Date.now() + durationMin * 60000).toISOString();
+    const started_at = new Date().toISOString();
+    const graceSec = 60;
+    const deadline_at = timerSubmissionService.calculateAuthoritativeDeadline(started_at, durationMin, graceSec);
+    const expires_at = deadline_at;
     const assignedOrgId = targetExam ? targetExam.organization_id : null;
     db.prepare(`
       INSERT INTO attempts (
-        token, student_id, exam_id, exam_version, organization_id, expires_at,
+        token, student_id, exam_id, exam_version, organization_id, started_at, expires_at, deadline_at, grace_period_seconds,
         question_ids_json, shuffle_map_json, exam_snapshot_json, questions_snapshot_json,
         shuffle_seed, snapshot_hash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       token,
       studentId,
       targetExamId,
       targetExam ? targetExam.version : 1,
       assignedOrgId,
+      started_at,
       expires_at,
+      deadline_at,
+      graceSec,
       JSON.stringify(selected),
       JSON.stringify(shuffleMap || maps),
       examSnapshot ? JSON.stringify(examSnapshot) : null,
@@ -340,7 +347,7 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
       snapshotHash || null
     );
 
-    return { token, expires_at, durationMin };
+    return { token, expires_at, deadline_at, durationMin };
   });
 
   try {
@@ -438,16 +445,19 @@ router.get('/attempt/:token', validate({ params: attemptTokenParamSchema }), (re
   } catch {}
 
   const nowMs = Date.now();
-  const expiresMs = new Date(att.expires_at).getTime();
-  const remainingSeconds = Math.max(0, Math.floor((expiresMs - nowMs) / 1000));
+  const timing = timerSubmissionService.getAuthoritativeTiming(att, nowMs);
 
   const payload = {
     test_title: testTitle,
     brand_name: cfg.brand_name,
     student_name: student ? student.name : '',
     status: att.status,
+    finalization_status: att.finalization_status || 'PENDING',
+    started_at: att.started_at,
+    deadline_at: timing.deadlineAt,
     expires_at: att.expires_at,
     duration_minutes: durationMinutes,
+    grace_period_seconds: timing.gracePeriodSeconds,
     tab_switches: att.tab_switches,
     proctoring_risk_score: att.proctoring_risk_score || 0,
     proctoring_risk_level: att.proctoring_risk_level || 'NORMAL',
@@ -457,8 +467,9 @@ router.get('/attempt/:token', validate({ params: attemptTokenParamSchema }), (re
     current_question_id: att.current_question_id || null,
     current_section_id: att.current_section_id || null,
     last_synced_at: att.last_synced_at || null,
-    server_time: new Date(nowMs).toISOString(),
-    remaining_seconds: remainingSeconds,
+    server_time: timing.serverTime,
+    remaining_seconds: timing.remainingSeconds,
+    is_expired: timing.isExpired,
     questions
   };
   if (att.status === 'submitted') Object.assign(payload, resultSummary(att, student ? student.name : ''));
@@ -733,161 +744,12 @@ router.get('/attempt/:token/code-submissions/:submissionId', validate({ params: 
   res.json(payload);
 }));
 
-// Submit + grade (idempotent + concurrency locked)
+// Submit + grade (atomic, idempotent, deadline & snapshot protected - Day 13)
 router.post('/attempt/:token/submit', submitLimiter, validate({ params: attemptTokenParamSchema, body: submitSchema }), asyncHandler(async (req, res, next) => {
-  const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
-  if (!att) return next(new NotFoundError('Attempt not found'));
-
-  // Snapshot integrity check
-  try {
-    snapshotService.verifySnapshotIntegrity(att);
-  } catch (err) {
-    return next(err);
-  }
-
-  const student = db.prepare('SELECT * FROM students WHERE id = ?').get(att.student_id);
-  if (att.status === 'submitted') return res.json(resultSummary(att, student ? student.name : ''));
-
-  // Drain and wait for any pending in-flight coding submissions for this attempt
-  try {
-    await outboxDispatcher.drainAttemptSubmissions(att.id, 8000);
-  } catch {}
-
-  // Atomic state lock: transitions 'started' -> 'grading'
-  const lock = db.prepare("UPDATE attempts SET status = 'grading' WHERE id = ? AND status = 'started'").run(att.id);
-  if (lock.changes === 0) {
-    // Another concurrent submission already acquired the grading lock or completed
-    const current = db.prepare('SELECT * FROM attempts WHERE id = ?').get(att.id);
-    return res.json(resultSummary(current, student ? student.name : ''));
-  }
-
-  const body = req.body || {};
-  let savedAnswers = {};
-  try {
-    savedAnswers = att.answers_json ? JSON.parse(att.answers_json) : {};
-  } catch {}
-  const answers = { ...savedAnswers, ...(body.answers || {}) };
-  const codeAnswers = body.codeAnswers || {};
-  if (typeof body.tabSwitches === 'number' && body.tabSwitches > att.tab_switches) {
-    db.prepare('UPDATE attempts SET tab_switches = ? WHERE id = ?').run(Math.floor(body.tabSwitches), att.id);
-  }
-
-  const cfg = getConfig();
-  const qids = JSON.parse(att.question_ids_json || '[]');
-  const maps = JSON.parse(att.shuffle_map_json || '{}');
-
-  // Load questions: prefer frozen questions snapshot if present
-  let frozenList = null;
-  if (att.questions_snapshot_json) {
-    try {
-      const parsed = JSON.parse(att.questions_snapshot_json);
-      if (Array.isArray(parsed) && parsed.length > 0) frozenList = parsed;
-    } catch {}
-  }
-
-  const qmap = new Map();
-  if (frozenList) {
-    for (const q of frozenList) qmap.set(q.id, q);
-  } else if (qids.length) {
-    const qs = db.prepare(`SELECT * FROM questions WHERE id IN (${qids.map(() => '?').join(',')})`).all(...qids);
-    for (const q of qs) qmap.set(q.id, q);
-  }
-
-  let score = 0, total = 0;
-  const detail = [];
-  for (const qid of qids) {
-    const q = qmap.get(qid);
-    if (!q) continue;
-    total += q.marks;
-    let earned = 0;
-    if (q.type === 'mcq') {
-      const sel = answers[qid] ?? answers[String(qid)];
-      if (sel !== undefined && sel !== null && sel !== '') {
-        const optMap = (maps.options ? (maps.options[qid] || maps.options[String(qid)]) : null) || maps[qid] || maps[String(qid)];
-        const origIdx = shuffleService.reverseOptionIndex(sel, optMap);
-        if (origIdx === q.correct_index) {
-          earned = q.marks;
-        } else if (q.negative_marks) {
-          earned = -Math.abs(q.negative_marks);
-        }
-      }
-      detail.push({ id: q.id, category: q.category, type: 'mcq', marks: q.marks, earned });
-    } else {
-      // 1. Authoritative check: Look up completed coding submission from coding_submissions
-      const sub = db.prepare(`
-        SELECT * FROM coding_submissions
-        WHERE attempt_id = ? AND question_id = ? AND lifecycle_status = 'COMPLETED'
-        ORDER BY score DESC, completed_at DESC LIMIT 1
-      `).get(att.id, q.id);
-
-      if (sub) {
-        earned = sub.score;
-        detail.push({
-          id: q.id,
-          category: q.category,
-          type: 'code',
-          marks: q.marks,
-          earned: sub.score,
-          passed: sub.test_cases_passed,
-          total: sub.test_cases_total,
-          error: sub.error_message || null
-        });
-      } else {
-        const src = (codeAnswers[qid] ?? codeAnswers[String(qid)] ?? '').toString();
-        const tcs = q.test_cases || (q.test_cases_json ? JSON.parse(q.test_cases_json) : []);
-        if (src.trim() && judge0.isConfigured() && tcs.length) {
-          const g = await judge0.gradeCodeQuestion({ source_code: src, language_id: q.language_id || 71, test_cases: tcs });
-          earned = Math.round((q.marks * (g.total ? g.passed / g.total : 0)) * 100) / 100;
-          detail.push({ id: q.id, category: q.category, type: 'code', marks: q.marks, earned, passed: g.passed, total: g.total, error: g.error || null });
-        } else {
-          detail.push({ id: q.id, category: q.category, type: 'code', marks: q.marks, earned: 0, passed: 0, total: tcs.length, error: src.trim() ? 'no_completed_submission' : 'no_answer' });
-        }
-      }
-    }
-    score += earned;
-  }
-  score = Math.round(score * 100) / 100;
-  const percentage = total > 0 ? Math.round((score / total) * 1000) / 10 : 0;
-
-  // Determine scholarship: use exam's frozen slabs if available
-  let scholarship_pct = 0;
-  let customSlabs = null;
-  if (att.exam_snapshot_json) {
-    try {
-      const snap = JSON.parse(att.exam_snapshot_json);
-      if (Array.isArray(snap.scholarship_slabs) && snap.scholarship_slabs.length > 0) {
-        customSlabs = snap.scholarship_slabs;
-      }
-    } catch {}
-  }
-
-  if (customSlabs) {
-    const sorted = customSlabs.slice().sort((a, b) => b.min_score_pct - a.min_score_pct);
-    for (const s of sorted) {
-      if (percentage >= s.min_score_pct) {
-        scholarship_pct = s.discount_pct;
-        break;
-      }
-    }
-  } else {
-    scholarship_pct = tierFor(percentage, cfg.scholarship_slabs);
-  }
-
-  const was_late = Date.now() > new Date(att.expires_at).getTime() ? 1 : 0;
-  const certificate_id = 'ASP26-' + randHex(4).toUpperCase();
-  const claim_code = 'ASP-' + randAlnum(6);
-
-  db.prepare(`UPDATE attempts SET status='submitted', submitted_at=datetime('now'),
-    answers_json=?, code_answers_json=?, score=?, total_marks=?, percentage=?,
-    scholarship_pct=?, certificate_id=?, claim_code=?, was_late=?, graded_detail_json=?
-    WHERE id=?`).run(
-    JSON.stringify(answers), JSON.stringify(codeAnswers), score, total, percentage,
-    scholarship_pct, certificate_id, claim_code, was_late, JSON.stringify(detail), att.id
-  );
-
-  const updated = db.prepare('SELECT * FROM attempts WHERE id = ?').get(att.id);
-  const summary = resultSummary(updated, student ? student.name : '');
-  summary.detail = detail;
+  const summary = await timerSubmissionService.atomicSubmitAttempt(req.params.token, {
+    body: req.body,
+    req
+  });
   res.json(summary);
 }));
 

@@ -38,7 +38,7 @@ function request(method, path, options = {}) {
         let parsed = data;
         const ct = res.headers['content-type'] || '';
         if (ct.includes('application/json')) {
-          try { parsed = JSON.parse(data); } catch {}
+          try { parsed = JSON.parse(data); } catch { }
         }
         resolve({
           status: res.statusCode,

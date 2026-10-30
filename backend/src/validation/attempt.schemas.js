@@ -4,6 +4,18 @@ const { tokenParamSchema } = require('./common.schemas');
 
 const heartbeatSchema = z.object({
   tabSwitches: z.number().int().min(0).max(100000).optional().or(z.string().regex(/^\d+$/).transform(Number))
+}).passthrough().refine((data) => {
+  if (
+    data.remainingSeconds !== undefined ||
+    data.expiresAt !== undefined ||
+    data.deadlineAt !== undefined
+  ) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Client-supplied remainingSeconds or timer fields are forbidden; server is authoritative',
+  path: ['remainingSeconds']
 });
 
 const submitSchema = z.object({
@@ -11,7 +23,23 @@ const submitSchema = z.object({
   codeAnswers: z.record(
     z.string().max(65536, 'Code submission exceeds maximum permitted size (64KB)')
   ).optional().default({}),
-  tabSwitches: z.number().int().min(0).max(100000).optional().default(0)
+  tabSwitches: z.number().int().min(0).max(100000).optional().default(0),
+  submissionId: z.string().trim().min(5).max(128).optional(),
+  idempotencyKey: z.string().trim().min(5).max(128).optional()
+}).passthrough().refine((data) => {
+  if (
+    data.remainingSeconds !== undefined ||
+    data.expiresAt !== undefined ||
+    data.deadlineAt !== undefined ||
+    data.score !== undefined ||
+    data.marks !== undefined
+  ) {
+    return false;
+  }
+  return true;
+}, {
+  message: 'Client cannot supply timer or evaluation overrides; server is authoritative',
+  path: ['remainingSeconds']
 });
 
 const codeExecutionSchema = z.object({

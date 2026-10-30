@@ -119,3 +119,4 @@ module.exports = {
   progressSyncSchema,
   extendedHeartbeatSchema
 };
+

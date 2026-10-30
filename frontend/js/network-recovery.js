@@ -33,6 +33,7 @@
   let consecutiveFailures = 0;
   let backoffMs = 1000;
   let onExpiryCallback = null;
+  let onHeartbeatCallback = null;
   let onStatusChangeCallback = null;
   let destroyed = false;
 
@@ -123,6 +124,14 @@
       const data = await res.json();
       consecutiveFailures = 0;
       backoffMs = 1000;
+
+      if (typeof onHeartbeatCallback === 'function') {
+        try {
+          onHeartbeatCallback(data);
+        } catch (hbErr) {
+          console.warn('[NetworkRecovery] Heartbeat callback error:', hbErr);
+        }
+      }
 
       // Check authoritative expiration from server
       if (data.isExpired || (typeof data.remainingSeconds === 'number' && data.remainingSeconds <= 0)) {
@@ -250,6 +259,7 @@
       if (!options.token) throw new Error('Attempt token is required for NetworkRecovery');
       token = options.token;
       onExpiryCallback = options.onExpiry || null;
+      onHeartbeatCallback = options.onHeartbeat || null;
       onStatusChangeCallback = options.onStatusChange || null;
       destroyed = false;
       consecutiveFailures = 0;
@@ -299,3 +309,4 @@
 
   return NetworkRecovery;
 }));
+

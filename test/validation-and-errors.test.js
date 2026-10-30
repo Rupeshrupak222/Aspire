@@ -6,7 +6,7 @@ const os = require('os');
 const assert = require('assert');
 
 const PORT = 3211;
-const DB = path.join(os.tmpdir(), 'aspire-validation-test.db');
+const DB = path.join(os.tmpdir(), `aspire-validation-test-${Date.now()}-${Math.floor(Math.random() * 10000)}.db`);
 const ADMIN_EMAIL = 'valtest-admin@adyapan.internal';
 const ADMIN_PASSWORD = 'ValTestPassword123!';
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -65,8 +65,12 @@ async function run() {
     }
   });
 
+  let serverOutput = '';
+  proc.stdout?.on('data', (d) => { serverOutput += d; });
+  proc.stderr?.on('data', (d) => { serverOutput += d; });
+
   if (!await waitForServer()) {
-    console.error('FAIL: Server failed to start');
+    console.error('FAIL: Server failed to start. Output:\n' + serverOutput);
     proc.kill();
     process.exit(1);
   }

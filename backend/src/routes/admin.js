@@ -34,6 +34,7 @@ const questionService = require('../services/question.service');
 const examService = require('../services/exam.service');
 const { recordAuditEvent } = require('../services/audit.service');
 const proctoringRiskService = require('../services/proctoring-risk.service');
+const timerSubmissionService = require('../services/timer-submission.service');
 const {
   createExamSchema,
   updateExamSchema,
@@ -605,10 +606,11 @@ router.get('/results', requirePermission(PERMISSIONS.RESULTS_READ), validate({ q
   const { where, params } = buildResultsQuery(req.query, req.user);
   const limit = Math.min(parseInt(req.query.limit, 10) || 500, 5000);
 
-  const rows = db.prepare(`SELECT a.id AS attempt_id, s.name, s.phone, s.email, s.college, s.city,
-    s.grad_year, s.track, s.campaign_code, a.started_at, a.submitted_at, a.tab_switches,
+  const rows = db.prepare(`SELECT a.id AS attempt_id, a.organization_id, s.name, s.phone, s.email, s.college, s.city,
+    s.grad_year, s.track, s.campaign_code, a.started_at, a.deadline_at, a.submitted_at, a.tab_switches,
     a.proctoring_risk_score, a.proctoring_risk_level,
     a.last_heartbeat_at, a.last_synced_at, a.server_revision,
+    a.finalization_status, a.finalized_by, a.submission_id,
     a.score, a.total_marks, a.percentage, a.scholarship_pct, a.certificate_id, a.claim_code, a.was_late
     FROM attempts a JOIN students s ON s.id = a.student_id
     WHERE ${where} ORDER BY a.submitted_at DESC LIMIT ?`).all(...params, limit);
@@ -624,18 +626,20 @@ function csvEscape(v) {
 router.get('/results.csv', requirePermission(PERMISSIONS.RESULTS_EXPORT), validate({ query: resultsQuerySchema }), (req, res) => {
   const { where, params } = buildResultsQuery(req.query, req.user);
   const rows = db.prepare(`SELECT a.id AS attempt_id, s.name, s.phone, s.email, s.college, s.city,
-    s.grad_year, s.track, s.campaign_code, a.started_at, a.submitted_at, a.tab_switches,
+    s.grad_year, s.track, s.campaign_code, a.started_at, a.deadline_at, a.submitted_at, a.tab_switches,
     a.proctoring_risk_score, a.proctoring_risk_level,
     a.last_heartbeat_at, a.last_synced_at, a.server_revision,
+    a.finalization_status, a.finalized_by, a.submission_id,
     a.score, a.total_marks, a.percentage, a.scholarship_pct, a.certificate_id, a.claim_code, a.was_late
     FROM attempts a JOIN students s ON s.id = a.student_id
     WHERE ${where} ORDER BY a.submitted_at DESC LIMIT 5000`).all(...params);
 
   const cols = [
     'attempt_id', 'name', 'phone', 'email', 'college', 'city', 'grad_year', 'track',
-    'campaign_code', 'started_at', 'submitted_at', 'tab_switches',
+    'campaign_code', 'started_at', 'deadline_at', 'submitted_at', 'tab_switches',
     'proctoring_risk_score', 'proctoring_risk_level',
     'last_heartbeat_at', 'last_synced_at', 'server_revision',
+    'finalization_status', 'finalized_by', 'submission_id',
     'score', 'total_marks', 'percentage', 'scholarship_pct', 'certificate_id', 'claim_code', 'was_late'
   ];
   const lines = [cols.join(',')];
@@ -650,6 +654,18 @@ router.get('/results.csv', requirePermission(PERMISSIONS.RESULTS_EXPORT), valida
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="aspire-results.csv"');
   res.send(lines.join('\n'));
+});
+
+/* ---------- Expired Attempts Reconciliation (Day 13) ---------- */
+router.post('/reconcile-expired', requirePermission(PERMISSIONS.RESULTS_READ), async (req, res, next) => {
+  try {
+    const result = await timerSubmissionService.reconcileExpiredAttempts({
+      limit: parseInt(req.query.limit, 10) || 50
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.get('/report/college', requirePermission(PERMISSIONS.ANALYTICS_READ), validate({ query: collegeReportQuerySchema }), (req, res) => {

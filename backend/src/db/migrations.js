@@ -627,6 +627,39 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_attempts_synced ON attempts(last_synced_at);
         `);
       }
+    },
+    {
+      version: '011_timer_submission_reliability',
+      up: (d) => {
+        const addColIfMissing = (table, col, def) => {
+          const cols = d.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+          if (!cols.includes(col)) {
+            d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+          }
+        };
+
+        // 1. Authoritative deadline and grace period fields
+        addColIfMissing('attempts', 'deadline_at', 'TEXT');
+        addColIfMissing('attempts', 'grace_period_seconds', 'INTEGER NOT NULL DEFAULT 60');
+
+        // 2. Finalization idempotency & status
+        addColIfMissing('attempts', 'submission_id', 'TEXT');
+        addColIfMissing('attempts', 'finalization_status', "TEXT NOT NULL DEFAULT 'PENDING'");
+        addColIfMissing('attempts', 'finalized_by', "TEXT DEFAULT 'CANDIDATE'");
+
+        // 3. Backfill deadline_at for existing rows
+        d.exec(`
+          UPDATE attempts SET deadline_at = expires_at WHERE deadline_at IS NULL;
+          UPDATE attempts SET finalization_status = 'FINALIZED' WHERE status = 'submitted' AND finalization_status = 'PENDING';
+        `);
+
+        // 4. Indexes for fast deadline reconciliation and idempotency
+        d.exec(`
+          CREATE INDEX IF NOT EXISTS idx_attempts_deadline ON attempts(expires_at, status);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_attempts_submission_id ON attempts(submission_id) WHERE submission_id IS NOT NULL;
+          CREATE INDEX IF NOT EXISTS idx_attempts_finalization ON attempts(finalization_status);
+        `);
+      }
     }
   ];
 

@@ -5,6 +5,7 @@ const { db } = require('../db');
 const { ConflictError, ValidationError, NotFoundError } = require('../errors/app-error');
 const logger = require('../utils/logger');
 const snapshotService = require('./snapshot.service');
+const timerSubmissionService = require('./timer-submission.service');
 
 const CHANGE_TYPES = Object.freeze({
   MCQ_ANSWER: 'MCQ_ANSWER',
@@ -42,9 +43,10 @@ function processHeartbeat(attempt, data = {}, options = {}) {
   }
 
   const nowMs = Date.now();
-  const expiresMs = new Date(attempt.expires_at).getTime();
-  const remainingSeconds = Math.max(0, Math.floor((expiresMs - nowMs) / 1000));
-  const isExpired = nowMs > expiresMs;
+  const { deadlineStr, deadlineMs } = timerSubmissionService.getEffectiveDeadline(attempt);
+  const remainingSeconds = Math.max(0, Math.floor((deadlineMs - nowMs) / 1000));
+  const isExpired = nowMs > deadlineMs;
+  const graceSec = attempt.grace_period_seconds !== undefined ? Number(attempt.grace_period_seconds) : 60;
 
   if (attempt.status === 'started') {
     const tabSwitches = typeof data.tabSwitches === 'number' ? Math.floor(data.tabSwitches) : null;
@@ -68,10 +70,14 @@ function processHeartbeat(attempt, data = {}, options = {}) {
     ok: true,
     acknowledged: true,
     serverTime: new Date(nowMs).toISOString(),
-    expiresAt: attempt.expires_at,
+    startedAt: updated.started_at,
+    deadlineAt: deadlineStr,
+    expiresAt: updated.expires_at,
+    gracePeriodSeconds: graceSec,
     remainingSeconds,
     isExpired,
     status: updated.status,
+    finalizationStatus: updated.finalization_status || 'PENDING',
     serverRevision: updated.server_revision || 0,
     tabSwitches: updated.tab_switches || 0,
     lastSyncedAt: updated.last_synced_at || null
@@ -102,8 +108,8 @@ function processProgressSync(attempt, syncPayload, options = {}) {
     throw new ConflictError(`Attempt is in status '${attempt.status}' and cannot accept progress updates`, 'ATTEMPT_NOT_ACTIVE');
   }
 
-  const expiresMs = new Date(attempt.expires_at).getTime();
-  if (Date.now() > expiresMs) {
+  const { deadlineMs } = timerSubmissionService.getEffectiveDeadline(attempt);
+  if (Date.now() > deadlineMs) {
     throw new ConflictError('Assessment duration has expired', 'ATTEMPT_EXPIRED');
   }
 
@@ -215,8 +221,10 @@ function processProgressSync(attempt, syncPayload, options = {}) {
           const optIdx = parseInt(ch.answer, 10);
           let optionsCount = 4;
           try {
-            const opts = JSON.parse(questionObj.options_json || '[]');
-            if (Array.isArray(opts)) optionsCount = opts.length;
+            const opts = Array.isArray(questionObj.options)
+              ? questionObj.options
+              : JSON.parse(questionObj.options_json || '[]');
+            if (Array.isArray(opts) && opts.length > 0) optionsCount = opts.length;
           } catch {}
 
           if (isNaN(optIdx) || optIdx < 0 || optIdx >= optionsCount) {
@@ -335,7 +343,8 @@ function processProgressSync(attempt, syncPayload, options = {}) {
 function getAttemptRecoveryData(attemptId, targetDb = db) {
   const attempt = targetDb.prepare(`
     SELECT
-      id, token, student_id, exam_id, status, started_at, expires_at, submitted_at,
+      id, token, student_id, exam_id, status, started_at, expires_at, deadline_at,
+      grace_period_seconds, finalization_status, submitted_at,
       answers_json, draft_code_json, server_revision, current_question_id, current_section_id,
       client_session_id, last_heartbeat_at, last_synced_at, sync_conflict_count,
       tab_switches, proctoring_risk_score, proctoring_risk_level
@@ -357,17 +366,21 @@ function getAttemptRecoveryData(attemptId, targetDb = db) {
   } catch {}
 
   const nowMs = Date.now();
-  const expiresMs = new Date(attempt.expires_at).getTime();
-  const remainingSeconds = Math.max(0, Math.floor((expiresMs - nowMs) / 1000));
+  const { deadlineStr, deadlineMs } = timerSubmissionService.getEffectiveDeadline(attempt);
+  const remainingSeconds = Math.max(0, Math.floor((deadlineMs - nowMs) / 1000));
 
   return {
     attemptId: attempt.id,
     token: attempt.token,
     status: attempt.status,
+    finalizationStatus: attempt.finalization_status || 'PENDING',
     serverTime: new Date(nowMs).toISOString(),
+    startedAt: attempt.started_at,
+    deadlineAt: deadlineStr,
     expiresAt: attempt.expires_at,
+    gracePeriodSeconds: attempt.grace_period_seconds || 60,
     remainingSeconds,
-    isExpired: nowMs > expiresMs,
+    isExpired: nowMs > deadlineMs,
     serverRevision: attempt.server_revision || 0,
     currentQuestionId: attempt.current_question_id,
     currentSectionId: attempt.current_section_id,
@@ -389,3 +402,4 @@ module.exports = {
   getAttemptRecoveryData,
   resolveAttemptQuestions
 };
+

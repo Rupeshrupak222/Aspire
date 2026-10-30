@@ -9,7 +9,10 @@ let codeLanguages = {};  // code: {qid: language}
 let codeResults = {};    // code: {qid: { type: 'run'|'submit', data, error }}
 let tabSwitches = 0;
 let timerId = null;
+let timerWorker = null;
 let submitted = false;
+let isSubmitting = false;
+let submissionId = null;
 
 let draftDebounceTimer = null;
 
@@ -76,9 +79,13 @@ async function init() {
   if (window.NetworkRecovery) {
     window.NetworkRecovery.init({
       token,
-      onExpiry: () => autoSubmit()
+      onExpiry: () => autoSubmit(),
+      onHeartbeat: (hbData) => syncTimerWithServer(hbData)
     });
   }
+
+  setupMultiTabCoordination(token);
+  setupLifecycleListeners(token);
 
   if (window.AspireProctoring) {
     window.AspireProctoring.init({ token });
@@ -487,23 +494,148 @@ function renderCodeResultUI(resultObj) {
 }
 
 function startTimer() {
-  const end = new Date(attempt.expires_at).getTime();
+  const deadlineAt = attempt.deadline_at || attempt.expires_at;
+  const serverTime = attempt.server_time || new Date().toISOString();
   const el = document.getElementById('timerText');
   const bar = document.getElementById('timerBar');
-  function tick() {
-    const left = end - Date.now();
+
+  if (typeof Worker !== 'undefined') {
+    try {
+      if (timerWorker) timerWorker.terminate();
+      timerWorker = new Worker('/js/timer.worker.js');
+      timerWorker.onmessage = function (e) {
+        const msg = e.data || {};
+        if (msg.type === 'TICK') {
+          if (el) el.textContent = msg.formattedText;
+          if (bar) bar.classList.toggle('danger', msg.isDanger);
+        } else if (msg.type === 'EXPIRED') {
+          autoSubmit();
+        }
+      };
+      timerWorker.postMessage({
+        type: 'START',
+        deadlineAt,
+        serverTime
+      });
+      return;
+    } catch (err) {
+      console.warn('Worker initialization failed, falling back to interval timer', err);
+    }
+  }
+
+  // Fallback to main thread timer if Web Worker is unavailable
+  const end = new Date(deadlineAt).getTime();
+  const offset = new Date(serverTime).getTime() - Date.now();
+  function fallbackTick() {
+    const left = end - (Date.now() + offset);
     if (left <= 0) {
-      clearInterval(timerId);
+      if (timerId) clearInterval(timerId);
       autoSubmit();
       return;
     }
     const m = Math.floor(left / 60000);
     const s = Math.floor((left % 60000) / 1000);
-    el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    bar.classList.toggle('danger', left < 5 * 60000);
+    if (el) el.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    if (bar) bar.classList.toggle('danger', left < 5 * 60000);
   }
-  tick();
-  timerId = setInterval(tick, 1000);
+  fallbackTick();
+  timerId = setInterval(fallbackTick, 1000);
+}
+
+function syncTimerWithServer(hbData) {
+  if (!hbData) return;
+  if (hbData.isExpired) {
+    autoSubmit();
+    return;
+  }
+  if (timerWorker) {
+    timerWorker.postMessage({
+      type: 'SYNC',
+      deadlineAt: hbData.deadlineAt || hbData.expiresAt,
+      serverTime: hbData.serverTime
+    });
+  }
+}
+
+function setupMultiTabCoordination(token) {
+  const banner = document.getElementById('multiTabBanner');
+  const claimBtn = document.getElementById('claimSessionBtn');
+
+  function disableInputs(disabled) {
+    const card = document.querySelector('.card');
+    if (card) {
+      card.style.opacity = disabled ? '0.5' : '1';
+      card.style.pointerEvents = disabled ? 'none' : 'auto';
+    }
+  }
+
+  if (window.TabCoordinator) {
+    window.TabCoordinator.init({
+      token,
+      onDeactivated: () => {
+        if (banner) banner.style.display = 'block';
+        disableInputs(true);
+        toast('Another tab is actively taking this test.');
+      },
+      onActivated: async () => {
+        if (banner) banner.style.display = 'none';
+        disableInputs(false);
+        toast('Session active in this tab.');
+        try {
+          const fresh = await api(`/api/attempt/${token}`);
+          if (fresh.status === 'submitted') {
+            sessionStorage.setItem(RESULT_KEY, JSON.stringify(fresh));
+            window.location.href = '/result.html';
+          }
+        } catch {}
+      }
+    });
+
+    if (claimBtn) {
+      claimBtn.addEventListener('click', () => {
+        window.TabCoordinator.claimSession();
+      });
+    }
+  }
+}
+
+function setupLifecycleListeners(token) {
+  // Sleep / time-jump detector
+  let lastTick = Date.now();
+  setInterval(() => {
+    const now = Date.now();
+    if (now - lastTick > 6000) {
+      // Possible system sleep or background tab thaw: perform immediate heartbeat
+      if (window.NetworkRecovery) {
+        window.NetworkRecovery.performHeartbeat();
+      }
+    }
+    lastTick = now;
+  }, 2000);
+
+  // BFCache (Back/Forward Cache) detection
+  window.addEventListener('pageshow', async (e) => {
+    if (e.persisted) {
+      try {
+        const fresh = await api(`/api/attempt/${token}`);
+        if (fresh.status === 'submitted') {
+          sessionStorage.setItem(RESULT_KEY, JSON.stringify(fresh));
+          window.location.href = '/result.html';
+        }
+      } catch {}
+    }
+  });
+
+  // Popstate navigation protection
+  window.addEventListener('popstate', async () => {
+    try {
+      const fresh = await api(`/api/attempt/${token}`);
+      if (fresh.status === 'submitted') {
+        sessionStorage.setItem(RESULT_KEY, JSON.stringify(fresh));
+        window.location.href = '/result.html';
+      }
+    } catch {}
+  });
 }
 
 function setupTabDetection() {
@@ -523,13 +655,13 @@ function setupTabDetection() {
 }
 
 async function autoSubmit() {
-  if (submitted) return;
+  if (submitted || isSubmitting) return;
   toast('Time is up — submitting your test automatically…');
   await doSubmit(true);
 }
 
 async function doSubmit(auto = false) {
-  if (submitted) return;
+  if (submitted || isSubmitting) return;
   const token = getToken();
   if (!auto) {
     const unanswered = questions.filter((q) => q.type === 'mcq'
@@ -537,20 +669,39 @@ async function doSubmit(auto = false) {
       : !(codeAnswers[q.id] || '').trim()).length;
     if (unanswered > 0 && !confirm(`${unanswered} question(s) unanswered. Submit anyway?`)) return;
   }
+
+  isSubmitting = true;
   submitted = true;
-  clearInterval(timerId);
+
+  if (timerId) clearInterval(timerId);
+  if (timerWorker) {
+    timerWorker.postMessage({ type: 'STOP' });
+    timerWorker.terminate();
+    timerWorker = null;
+  }
   if (window.NetworkRecovery) {
     window.NetworkRecovery.destroy();
   }
   if (window.AspireProctoring) {
     window.AspireProctoring.destroy();
   }
-  document.getElementById('submitBtn').disabled = true;
-  document.getElementById('submitBtn').textContent = 'Grading… (code questions may take a few seconds)';
+
+  const submitBtn = document.getElementById('submitBtn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Grading… (code questions may take a few seconds)';
+  }
+
+  if (!submissionId) {
+    submissionId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `sub_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  }
+
   try {
     const data = await api(`/api/attempt/${token}/submit`, {
       method: 'POST',
-      body: JSON.stringify({ answers, codeAnswers, tabSwitches })
+      body: JSON.stringify({ answers, codeAnswers, tabSwitches, submissionId })
     });
 
     // Cleanup local storage for this attempt
@@ -566,9 +717,12 @@ async function doSubmit(auto = false) {
     sessionStorage.setItem(RESULT_KEY, JSON.stringify(data));
     window.location.href = '/result.html';
   } catch (e) {
+    isSubmitting = false;
     submitted = false;
-    document.getElementById('submitBtn').disabled = false;
-    document.getElementById('submitBtn').textContent = 'Submit Test';
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Test';
+    }
     showErr('testErr', 'Submit failed: ' + e.message + '. Please try again.');
   }
 }
