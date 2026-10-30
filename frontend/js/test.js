@@ -11,6 +11,8 @@ let tabSwitches = 0;
 let timerId = null;
 let submitted = false;
 
+let draftDebounceTimer = null;
+
 async function init() {
   const token = getToken();
   if (!token) { window.location.href = '/index.html'; return; }
@@ -29,15 +31,40 @@ async function init() {
   tabSwitches = attempt.tab_switches || 0;
   if (!questions.length) { showErr('testErr', 'No questions available. Please contact support.'); return; }
 
-  // Restore any locally preserved code answers
+  let localState = null;
+  if (window.AssessmentStorage) {
+    try {
+      localState = await window.AssessmentStorage.init(token);
+    } catch (e) {
+      console.warn('Failed to initialize AssessmentStorage', e);
+    }
+  }
+
+  // Restore MCQ answers: reconcile server state with local recovery
+  answers = { ...(attempt.answers || {}), ...(localState?.answers || {}) };
+
+  // Restore draft code answers
   questions.forEach(q => {
     if (q.type === 'code') {
-      const local = localStorage.getItem(`aspire_code_${token}_${q.id}`);
-      if (local !== null && local !== undefined) {
-        codeAnswers[q.id] = local;
+      const localCode = localState?.draftCode?.[q.id]?.code;
+      const legacyCode = localStorage.getItem(`aspire_code_${token}_${q.id}`);
+      const serverCode = attempt.draft_code?.[q.id]?.code;
+      if (localCode !== undefined && localCode !== null) {
+        codeAnswers[q.id] = localCode;
+      } else if (legacyCode !== null && legacyCode !== undefined) {
+        codeAnswers[q.id] = legacyCode;
+      } else if (serverCode !== undefined && serverCode !== null) {
+        codeAnswers[q.id] = serverCode;
       }
     }
   });
+
+  // Restore active question
+  const savedQId = localState?.currentQuestionId || attempt.current_question_id;
+  if (savedQId) {
+    const idx = questions.findIndex(q => q.id === Number(savedQId));
+    if (idx >= 0) current = idx;
+  }
 
   document.getElementById('testTitle').textContent = attempt.test_title || 'Aspire Scholarship Test';
   document.getElementById('studentName').textContent = attempt.student_name || '';
@@ -45,6 +72,27 @@ async function init() {
   renderQuestion();
   startTimer();
   setupTabDetection();
+
+  if (window.NetworkRecovery) {
+    window.NetworkRecovery.init({
+      token,
+      onExpiry: () => autoSubmit()
+    });
+  }
+
+  if (window.AspireProctoring) {
+    window.AspireProctoring.init({ token });
+  }
+}
+
+function navigateToQuestion(idx) {
+  if (idx < 0 || idx >= questions.length) return;
+  current = idx;
+  renderQuestion();
+  if (window.AssessmentStorage && questions[current]) {
+    window.AssessmentStorage.saveCurrentQuestion(questions[current].id);
+    if (window.NetworkRecovery) window.NetworkRecovery.triggerSync();
+  }
 }
 
 function renderPalette() {
@@ -55,7 +103,7 @@ function renderPalette() {
     b.className = 'pal-btn';
     b.textContent = i + 1;
     b.id = `pal-${i}`;
-    b.onclick = () => { current = i; renderQuestion(); };
+    b.onclick = () => { navigateToQuestion(i); };
     pal.appendChild(b);
   });
   markPalette();
@@ -131,10 +179,15 @@ function renderQuestion() {
 
   if (q.type === 'mcq') {
     box.querySelectorAll('input[name="opt"]').forEach((r) => {
-      r.addEventListener('change', () => {
-        answers[q.id] = parseInt(r.value, 10);
+      r.addEventListener('change', async () => {
+        const optVal = parseInt(r.value, 10);
+        answers[q.id] = optVal;
         markPalette();
         renderQuestion();
+        if (window.AssessmentStorage) {
+          await window.AssessmentStorage.saveMCQAnswer(q.id, optVal);
+          if (window.NetworkRecovery) window.NetworkRecovery.triggerSync();
+        }
       });
     });
   } else {
@@ -151,10 +204,21 @@ function renderQuestion() {
       codeAnswers[q.id] = ta.value;
       localStorage.setItem(`aspire_code_${token}_${q.id}`, ta.value);
       markPalette();
+      if (window.AssessmentStorage) {
+        if (draftDebounceTimer) clearTimeout(draftDebounceTimer);
+        draftDebounceTimer = setTimeout(async () => {
+          await window.AssessmentStorage.saveDraftCode(q.id, langSelect.value, ta.value);
+          if (window.NetworkRecovery) window.NetworkRecovery.triggerSync();
+        }, 600);
+      }
     });
 
-    langSelect.addEventListener('change', () => {
+    langSelect.addEventListener('change', async () => {
       codeLanguages[q.id] = langSelect.value;
+      if (window.AssessmentStorage && ta.value) {
+        await window.AssessmentStorage.saveDraftCode(q.id, langSelect.value, ta.value);
+        if (window.NetworkRecovery) window.NetworkRecovery.triggerSync();
+      }
     });
 
     runBtn.addEventListener('click', () => handleRunCode(q));
@@ -475,6 +539,12 @@ async function doSubmit(auto = false) {
   }
   submitted = true;
   clearInterval(timerId);
+  if (window.NetworkRecovery) {
+    window.NetworkRecovery.destroy();
+  }
+  if (window.AspireProctoring) {
+    window.AspireProctoring.destroy();
+  }
   document.getElementById('submitBtn').disabled = true;
   document.getElementById('submitBtn').textContent = 'Grading… (code questions may take a few seconds)';
   try {
@@ -489,6 +559,9 @@ async function doSubmit(auto = false) {
         localStorage.removeItem(`aspire_code_${token}_${q.id}`);
       }
     });
+    if (window.AssessmentStorage) {
+      await window.AssessmentStorage.clearAssessmentState();
+    }
 
     sessionStorage.setItem(RESULT_KEY, JSON.stringify(data));
     window.location.href = '/result.html';
@@ -500,9 +573,16 @@ async function doSubmit(auto = false) {
   }
 }
 
-document.getElementById('prevBtn').addEventListener('click', () => { if (current > 0) { current--; renderQuestion(); } });
-document.getElementById('nextBtn').addEventListener('click', () => { if (current < questions.length - 1) { current++; renderQuestion(); } });
+document.getElementById('prevBtn').addEventListener('click', () => { if (current > 0) { navigateToQuestion(current - 1); } });
+document.getElementById('nextBtn').addEventListener('click', () => { if (current < questions.length - 1) { navigateToQuestion(current + 1); } });
 document.getElementById('submitBtn').addEventListener('click', () => doSubmit(false));
-window.addEventListener('beforeunload', (e) => { if (!submitted) e.preventDefault(); });
+window.addEventListener('beforeunload', (e) => {
+  if (!submitted) {
+    if (window.AspireProctoring) {
+      window.AspireProctoring.flushQueue(true);
+    }
+    e.preventDefault();
+  }
+});
 
 init();

@@ -9,7 +9,10 @@
 <body>
 <div class="timer" id="timerBar">
   <div><span id="testTitle">Aspire Scholarship Test</span> · <span id="studentName" style="font-weight:400"></span></div>
-  <div>⏱ <span id="timerText">--:--</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div id="syncStatusBadge" class="sync-badge synced" title="Connection & sync status">🟢 Synced</div>
+    <div>⏱ <span id="timerText">--:--</span></div>
+  </div>
 </div>
 <div class="wrap">
   <div class="card">
@@ -26,6 +29,10 @@
 </div>
 <script src="/js/config.js"></script>
 <script src="/js/common.js"></script>
+<script src="/js/vendor/idb-keyval.js"></script>
+<script src="/js/assessment-storage.js"></script>
+<script src="/js/network-recovery.js"></script>
+<script src="/js/proctoring.js"></script>
 <script src="/js/test.js"></script>
 </body>
 </html>

@@ -9,11 +9,15 @@ const asyncHandler = require('../utils/async-handler');
 const { NotFoundError, ConflictError, AppError } = require('../errors/app-error');
 const { registerSchema } = require('../validation/student.schemas');
 const { attemptTokenParamSchema, heartbeatSchema, submitSchema, codeExecutionSchema, codeSubmissionParamsSchema } = require('../validation/attempt.schemas');
+const { proctoringBatchSchema } = require('../validation/proctoring.schemas');
+const { extendedHeartbeatSchema, progressSyncSchema } = require('../validation/recovery.schemas');
 const { certificateParamSchema } = require('../validation/certificate.schemas');
-const { registerLimiter, submitLimiter, certificateLimiter, codeExecutionLimiter } = require('../security/rate-limit');
+const { registerLimiter, submitLimiter, certificateLimiter, codeExecutionLimiter, proctoringLimiter, recoverySyncLimiter } = require('../security/rate-limit');
 const examService = require('../services/exam.service');
 const shuffleService = require('../services/shuffle.service');
 const snapshotService = require('../services/snapshot.service');
+const proctoringRiskService = require('../services/proctoring-risk.service');
+const sessionRecoveryService = require('../services/session-recovery.service');
 const { executionService } = require('../services/code-execution/execution.service');
 const outboxDispatcher = require('../workers/outbox-dispatcher');
 const {
@@ -77,6 +81,8 @@ function resultSummary(att, studentName) {
     claim_code: att.claim_code,
     was_late: !!att.was_late,
     tab_switches: att.tab_switches,
+    proctoring_risk_score: att.proctoring_risk_score ?? 0,
+    proctoring_risk_level: att.proctoring_risk_level || 'NORMAL',
     submitted_at: att.submitted_at,
     student_name: studentName || undefined
   };
@@ -422,6 +428,19 @@ router.get('/attempt/:token', validate({ params: attemptTokenParamSchema }), (re
     }
   }
 
+  let answers = {};
+  try {
+    answers = att.answers_json ? JSON.parse(att.answers_json) : {};
+  } catch {}
+  let draftCode = {};
+  try {
+    draftCode = att.draft_code_json ? JSON.parse(att.draft_code_json) : {};
+  } catch {}
+
+  const nowMs = Date.now();
+  const expiresMs = new Date(att.expires_at).getTime();
+  const remainingSeconds = Math.max(0, Math.floor((expiresMs - nowMs) / 1000));
+
   const payload = {
     test_title: testTitle,
     brand_name: cfg.brand_name,
@@ -430,22 +449,72 @@ router.get('/attempt/:token', validate({ params: attemptTokenParamSchema }), (re
     expires_at: att.expires_at,
     duration_minutes: durationMinutes,
     tab_switches: att.tab_switches,
+    proctoring_risk_score: att.proctoring_risk_score || 0,
+    proctoring_risk_level: att.proctoring_risk_level || 'NORMAL',
+    answers,
+    draft_code: draftCode,
+    server_revision: att.server_revision || 0,
+    current_question_id: att.current_question_id || null,
+    current_section_id: att.current_section_id || null,
+    last_synced_at: att.last_synced_at || null,
+    server_time: new Date(nowMs).toISOString(),
+    remaining_seconds: remainingSeconds,
     questions
   };
   if (att.status === 'submitted') Object.assign(payload, resultSummary(att, student ? student.name : ''));
   res.json(payload);
 });
 
-// Heartbeat: persist tab-switch count during the test
-router.post('/attempt/:token/heartbeat', validate({ params: attemptTokenParamSchema, body: heartbeatSchema }), (req, res, next) => {
+// Heartbeat: authoritative time, tab-switch count, remaining seconds, revision (Day 12)
+router.post('/attempt/:token/heartbeat', validate({ params: attemptTokenParamSchema, body: extendedHeartbeatSchema }), (req, res, next) => {
   const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
   if (!att) return next(new NotFoundError('Attempt not found'));
-  if (att.status !== 'started') return res.json({ ok: true });
-  const n = parseInt(req.body && req.body.tabSwitches, 10);
-  if (Number.isFinite(n) && n > att.tab_switches) {
-    db.prepare('UPDATE attempts SET tab_switches = ? WHERE id = ?').run(n, att.id);
+  try {
+    const result = sessionRecoveryService.processHeartbeat(att, req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
   }
-  res.json({ ok: true });
+});
+
+// Progress auto-save & batch synchronization (Day 12)
+router.post('/attempt/:token/progress/sync', recoverySyncLimiter, validate({ params: attemptTokenParamSchema, body: progressSyncSchema }), (req, res, next) => {
+  const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
+  if (!att) return next(new NotFoundError('Attempt not found'));
+  try {
+    const result = sessionRecoveryService.processProgressSync(att, req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Proctoring events batch ingestion (Day 11)
+router.post('/attempt/:token/proctoring/events', proctoringLimiter, validate({ params: attemptTokenParamSchema, body: proctoringBatchSchema }), (req, res, next) => {
+  const att = db.prepare('SELECT * FROM attempts WHERE token = ?').get(req.params.token);
+  if (!att) return next(new NotFoundError('Attempt not found'));
+
+  // Snapshot integrity check
+  try {
+    snapshotService.verifySnapshotIntegrity(att);
+  } catch (err) {
+    return next(err);
+  }
+
+  const { events } = req.body;
+  try {
+    const result = proctoringRiskService.processBatchEvents(att, events);
+    res.json({
+      success: true,
+      accepted: true,
+      risk: result.risk,
+      processedCount: result.processedCount,
+      duplicateCount: result.duplicateCount,
+      synthesizedPatterns: result.synthesizedPatterns
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Run candidate code against public/sample test cases only (interactive IDE feedback)
@@ -693,7 +762,11 @@ router.post('/attempt/:token/submit', submitLimiter, validate({ params: attemptT
   }
 
   const body = req.body || {};
-  const answers = body.answers || {};
+  let savedAnswers = {};
+  try {
+    savedAnswers = att.answers_json ? JSON.parse(att.answers_json) : {};
+  } catch {}
+  const answers = { ...savedAnswers, ...(body.answers || {}) };
   const codeAnswers = body.codeAnswers || {};
   if (typeof body.tabSwitches === 'number' && body.tabSwitches > att.tab_switches) {
     db.prepare('UPDATE attempts SET tab_switches = ? WHERE id = ?').run(Math.floor(body.tabSwitches), att.id);

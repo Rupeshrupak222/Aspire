@@ -808,12 +808,26 @@ async function loadResults() {
   if (minp) p.set('min_percentage', minp);
   const rows = await aapi(`/api/admin/results?${p.toString()}`);
   document.getElementById('resCount').textContent = `${rows.length} result(s)`;
-  document.getElementById('resBody').innerHTML = rows.map((r) => `<tr>
-    <td>${esc(r.name)}</td><td>${esc(r.phone)}</td><td>${esc(r.college || '')}</td>
-    <td>${esc(r.track || '')}</td><td>${r.score}/${r.total_marks}</td>
-    <td>${Number(r.percentage).toFixed(1)}%</td><td>${r.scholarship_pct}%</td>
-    <td>${esc(r.claim_code || '')}</td><td>${esc((r.submitted_at || '').slice(0, 16))}</td>
-  </tr>`).join('');
+  document.getElementById('resBody').innerHTML = rows.map((r) => {
+    const riskLevel = r.proctoring_risk_level || 'NORMAL';
+    const riskScore = r.proctoring_risk_score || 0;
+    let badgeColor = '#10B981';
+    if (riskLevel === 'WARNING') badgeColor = '#F59E0B';
+    else if (riskLevel === 'SUSPICIOUS') badgeColor = '#F97316';
+    else if (riskLevel === 'HIGH_RISK') badgeColor = '#EF4444';
+
+    const riskBadge = `<span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:12px;font-weight:600;background:${badgeColor}22;color:${badgeColor};border:1px solid ${badgeColor}44">${riskLevel} (${riskScore} pts)</span>`;
+
+    return `<tr>
+      <td>${esc(r.name)}</td><td>${esc(r.phone)}</td><td>${esc(r.college || '')}</td>
+      <td>${esc(r.track || '')}</td><td>${r.score}/${r.total_marks}</td>
+      <td>${Number(r.percentage).toFixed(1)}%</td><td>${r.scholarship_pct}%</td>
+      <td>${esc(r.claim_code || '')}</td>
+      <td>${riskBadge}</td>
+      <td>${esc((r.submitted_at || '').slice(0, 16))}</td>
+      <td><button class="btn small ghost" onclick="inspectProctoring(${r.attempt_id})">Inspect</button></td>
+    </tr>`;
+  }).join('');
 
   const csvBtn = document.getElementById('csvBtn');
   if (csvBtn && hasPermission('results.export')) {
@@ -833,6 +847,87 @@ async function loadResults() {
   }
 }
 document.getElementById('filterBtn').addEventListener('click', loadResults);
+
+/* ---------- Proctoring Behavioral Analytics Modal (Day 11) ---------- */
+async function inspectProctoring(attemptId) {
+  if (!hasPermission('results.read')) return;
+  const modal = document.getElementById('proctoringModal');
+  const title = document.getElementById('procModalTitle');
+  const meta = document.getElementById('procModalMeta');
+  const body = document.getElementById('procModalBody');
+
+  body.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted)">Loading proctoring timeline…</div>';
+  modal.style.display = 'block';
+
+  try {
+    const res = await aapi(`/api/admin/attempts/${attemptId}/proctoring`);
+    const d = res.data;
+
+    title.textContent = `Proctoring Analytics — ${d.candidate.name || 'Candidate'}`;
+    meta.textContent = `${d.candidate.phone || ''} · ${d.examName || 'Assessment'} · Attempt #${d.attemptId}`;
+
+    const risk = d.risk || { score: 0, level: 'NORMAL' };
+    let badgeColor = '#10B981';
+    if (risk.level === 'WARNING') badgeColor = '#F59E0B';
+    else if (risk.level === 'SUSPICIOUS') badgeColor = '#F97316';
+    else if (risk.level === 'HIGH_RISK') badgeColor = '#EF4444';
+
+    const breakdown = (d.summary && d.summary.breakdown) || {};
+    const breakdownItems = Object.entries(breakdown).map(([type, stats]) => `
+      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:6px;padding:8px 12px;min-width:140px">
+        <div style="font-size:12px;color:var(--muted)">${esc(type)}</div>
+        <div style="font-size:16px;font-weight:700">${stats.count} <span style="font-size:12px;font-weight:normal;color:${stats.points > 0 ? '#EF4444' : '#64748B'}">(+${stats.points} pts)</span></div>
+      </div>
+    `).join('');
+
+    const timelineRows = (d.timeline || []).map((e, idx) => {
+      let metaStr = '';
+      if (e.metadata) {
+        metaStr = Object.entries(e.metadata).map(([k, v]) => `<b>${esc(k)}:</b> ${esc(String(v))}`).join(' · ');
+      }
+      return `<tr>
+        <td style="font-size:12px;color:var(--muted)">${idx + 1}</td>
+        <td style="font-size:12px">${esc(new Date(e.timestamp).toLocaleTimeString())}</td>
+        <td><b>${esc(e.eventType)}</b></td>
+        <td>${e.riskPoints > 0 ? `<span style="color:#EF4444;font-weight:600">+${e.riskPoints}</span>` : '<span style="color:#64748B">0</span>'}</td>
+        <td style="font-size:13px">${metaStr || '<span style="color:var(--muted)">—</span>'}</td>
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;background:#F1F5F9;padding:12px 16px;border-radius:8px;margin-bottom:16px">
+        <div>
+          <div style="font-size:13px;color:var(--muted)">Risk Assessment Score</div>
+          <div style="font-size:24px;font-weight:800;color:${badgeColor}">${risk.score} <span style="font-size:16px;font-weight:600">(${risk.level})</span></div>
+        </div>
+        <div>
+          <span style="font-size:13px;color:var(--muted)">Status: <b>${esc(d.status)}</b> · Tab switches: <b>${d.tabSwitches}</b> · Total events: <b>${d.totalEvents}</b></span>
+        </div>
+      </div>
+
+      <h4 style="margin:16px 0 8px">Event Breakdown</h4>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+        ${breakdownItems || '<div style="color:var(--muted)">No events recorded</div>'}
+      </div>
+
+      <h4 style="margin:16px 0 8px">Chronological Behavioral Timeline (${d.totalEvents} events)</h4>
+      <div style="max-height:360px;overflow-y:auto;border:1px solid #E2E8F0;border-radius:6px">
+        <table class="data" style="margin:0">
+          <thead><tr><th>#</th><th>Time</th><th>Event</th><th>Risk</th><th>Context</th></tr></thead>
+          <tbody>
+            ${timelineRows || '<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted)">No proctoring events recorded for this attempt</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = `<div class="err">Failed to load proctoring data: ${esc(err.message)}</div>`;
+  }
+}
+
+document.getElementById('closeProcModalBtn')?.addEventListener('click', () => {
+  document.getElementById('proctoringModal').style.display = 'none';
+});
 
 /* ---------- College report ---------- */
 document.getElementById('repBtn').addEventListener('click', async () => {

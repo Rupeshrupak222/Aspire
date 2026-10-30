@@ -543,6 +543,90 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_coding_subs_job_id ON coding_submissions(job_id);
         `);
       }
+    },
+    {
+      version: '009_proctoring_analytics',
+      up: (d) => {
+        // 1. Dedicated proctoring events table for enterprise behavioral tracking
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS proctoring_events (
+            id TEXT PRIMARY KEY,
+            attempt_id INTEGER NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+            event_id TEXT NOT NULL UNIQUE,
+            event_type TEXT NOT NULL,
+            event_timestamp TEXT NOT NULL,
+            received_at TEXT NOT NULL DEFAULT (datetime('now')),
+            risk_points INTEGER NOT NULL DEFAULT 0,
+            metadata_json TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_proctoring_attempt ON proctoring_events(attempt_id);
+          CREATE INDEX IF NOT EXISTS idx_proctoring_type ON proctoring_events(event_type);
+          CREATE INDEX IF NOT EXISTS idx_proctoring_event_id ON proctoring_events(event_id);
+          CREATE INDEX IF NOT EXISTS idx_proctoring_timestamp ON proctoring_events(event_timestamp);
+        `);
+
+        // 2. Add proctoring analytics fields to attempts table
+        const addColIfMissing = (table, col, def) => {
+          const cols = d.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+          if (!cols.includes(col)) {
+            d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+          }
+        };
+
+        addColIfMissing('attempts', 'proctoring_risk_score', 'INTEGER NOT NULL DEFAULT 0');
+        addColIfMissing('attempts', 'proctoring_risk_level', "TEXT NOT NULL DEFAULT 'NORMAL'");
+        addColIfMissing('attempts', 'proctoring_summary_json', 'TEXT');
+
+        d.exec(`
+          CREATE INDEX IF NOT EXISTS idx_attempts_risk_level ON attempts(proctoring_risk_level);
+        `);
+      }
+    },
+    {
+      version: '010_network_session_recovery',
+      up: (d) => {
+        // 1. Durable sync change log for idempotency and conflict resolution
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS attempt_sync_changes (
+            id TEXT PRIMARY KEY,
+            attempt_id INTEGER NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,
+            change_type TEXT NOT NULL,
+            question_id INTEGER,
+            revision INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            client_session_id TEXT,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_sync_changes_attempt ON attempt_sync_changes(attempt_id);
+          CREATE INDEX IF NOT EXISTS idx_sync_changes_qid ON attempt_sync_changes(attempt_id, question_id);
+          CREATE INDEX IF NOT EXISTS idx_sync_changes_applied ON attempt_sync_changes(applied_at);
+        `);
+
+        // 2. Add progress, heartbeat, revision, and recovery columns to attempts table
+        const addColIfMissing = (table, col, def) => {
+          const cols = d.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+          if (!cols.includes(col)) {
+            d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+          }
+        };
+
+        addColIfMissing('attempts', 'last_heartbeat_at', 'TEXT');
+        addColIfMissing('attempts', 'last_synced_at', 'TEXT');
+        addColIfMissing('attempts', 'server_revision', 'INTEGER NOT NULL DEFAULT 0');
+        addColIfMissing('attempts', 'current_question_id', 'INTEGER');
+        addColIfMissing('attempts', 'current_section_id', 'INTEGER');
+        addColIfMissing('attempts', 'client_session_id', 'TEXT');
+        addColIfMissing('attempts', 'draft_code_json', 'TEXT');
+        addColIfMissing('attempts', 'sync_conflict_count', 'INTEGER NOT NULL DEFAULT 0');
+
+        d.exec(`
+          CREATE INDEX IF NOT EXISTS idx_attempts_heartbeat ON attempts(last_heartbeat_at);
+          CREATE INDEX IF NOT EXISTS idx_attempts_synced ON attempts(last_synced_at);
+        `);
+      }
     }
   ];
 

@@ -33,7 +33,7 @@ function request(method, path, options = {}) {
         let parsed = data;
         try {
           parsed = JSON.parse(data);
-        } catch {}
+        } catch { }
         resolve({
           status: res.statusCode,
           headers: res.headers,
@@ -80,13 +80,19 @@ async function run() {
     console.log('--- 1. Test Setup & Role Initialization ---');
 
     // Super Admin login
-    const saLogin = await login('admin@adyapan.internal', '3fc3e62d450e12f5579d5e26');
+    let saLogin = await login('admin@adyapan.internal', 'AdminPassword123!');
+    if (!saLogin.data?.data?.token) {
+      saLogin = await login('admin@adyapan.internal', '3fc3e62d450e12f5579d5e26');
+    }
     if (saLogin.status === 200 && saLogin.data.data?.token) {
       superAdminToken = saLogin.data.data.token;
     } else {
       // Bootstrap super admin if credentials differ
       const sa = db.prepare("SELECT email FROM users WHERE role = 'SUPER_ADMIN'").get();
-      const loginTry = await login(sa.email, 'Admin@12345');
+      let loginTry = await login(sa.email, 'AdminPassword123!');
+      if (!loginTry.data?.data?.token) {
+        loginTry = await login(sa.email, 'Admin@12345');
+      }
       superAdminToken = loginTry.data?.data?.token;
     }
     assert(superAdminToken, 'Super admin authenticated');

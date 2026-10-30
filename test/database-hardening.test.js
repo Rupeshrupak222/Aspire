@@ -104,7 +104,7 @@ async function run() {
     const health = checkDbHealth(db);
     assert(health.healthy === true, 'checkDbHealth returns healthy=true');
     assert(health.foreignKeys === true, 'checkDbHealth confirms foreignKeys=true');
-    assert(health.latestMigration.startsWith('00'), `checkDbHealth identifies latest migration (got: ${health.latestMigration})`);
+    assert(/^\d{3}_/.test(health.latestMigration), `checkDbHealth identifies latest migration (got: ${health.latestMigration})`);
 
     /* ----------------------------------------------------
        2. Foreign Key Enforcement & Cascade Behaviors

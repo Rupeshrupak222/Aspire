@@ -286,7 +286,7 @@
       </div>
       <p class="sub" id="resCount"></p>
       <table class="data">
-        <thead><tr><th>Name</th><th>Phone</th><th>College</th><th>Track</th><th>Score</th><th>%</th><th>Scholarship</th><th>Claim code</th><th>Submitted</th></tr></thead>
+        <thead><tr><th>Name</th><th>Phone</th><th>College</th><th>Track</th><th>Score</th><th>%</th><th>Scholarship</th><th>Claim code</th><th>Proctoring Risk</th><th>Submitted</th><th>Actions</th></tr></thead>
         <tbody id="resBody"></tbody>
       </table>
     </div>
@@ -487,6 +487,20 @@
           <button id="closeExamPreviewBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
         </div>
         <div id="examPreviewContent" style="max-height:600px;overflow-y:auto"></div>
+      </div>
+    </div>
+
+    <!-- Proctoring Analytics & Timeline Modal (Day 11) -->
+    <div id="proctoringModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1200;overflow-y:auto;padding:24px">
+      <div class="card" style="max-width:850px;margin:24px auto;background:#FFFFFF;border-radius:8px;padding:24px;box-shadow:0 10px 25px rgba(0,0,0,0.2)">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #E2E8F0;padding-bottom:12px;margin-bottom:16px">
+          <div>
+            <h2 id="procModalTitle" style="margin:0">Proctoring Behavioral Analytics</h2>
+            <span id="procModalMeta" style="font-size:13px;color:var(--muted)"></span>
+          </div>
+          <button id="closeProcModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+        </div>
+        <div id="procModalBody"></div>
       </div>
     </div>
 

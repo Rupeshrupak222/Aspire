@@ -84,6 +84,40 @@ const codeExecutionLimiter = rateLimit({
   }
 });
 
+// 8. Dedicated proctoring event ingestion limiter
+const proctoringLimiter = rateLimit({
+  windowMs: 60 * 1000,      // 1 minute
+  max: isTest ? 5000 : 60,   // 60 requests per IP per min
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'RATE_LIMITED',
+      code: 'RATE_LIMITED',
+      message: 'Too many proctoring event submissions. Please wait a moment before sending more events.',
+      requestId: req.id || undefined
+    });
+  }
+});
+
+// 9. Dedicated progress sync limiter (allow steady auto-save bursts up to 120/min)
+const recoverySyncLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: isTest ? 5000 : 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: 'RATE_LIMITED',
+      code: 'RATE_LIMITED',
+      message: 'Too many sync requests. Please slow down and try again.',
+      requestId: req.id || undefined
+    });
+  }
+});
+
 module.exports = {
   publicApiLimiter,
   registerLimiter,
@@ -92,5 +126,7 @@ module.exports = {
   certificateLimiter,
   authLoginLimiter,
   codeExecutionLimiter,
+  proctoringLimiter,
+  recoverySyncLimiter,
   standardLimiterHandler
 };
