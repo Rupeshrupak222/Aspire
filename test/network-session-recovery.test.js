@@ -558,12 +558,19 @@ async function runTests() {
     // -------------------------------------------------------------
     console.log('\n--- 11. Admin Results & CSV Export Metadata Verification ---');
 
-    // Super admin credentials from bootstrap
-    const adminUser = db.prepare("SELECT * FROM users WHERE role = 'SUPER_ADMIN' LIMIT 1").get();
-    ok('Found super admin user in DB', !!adminUser);
+    const adminSuffix = crypto.randomBytes(4).toString('hex');
+    const adminUser = await userService.createUser({
+      email: `superadmin-rec-${adminSuffix}@adyapan.internal`,
+      password: 'AdminPassword123!',
+      name: 'Recovery Super Admin',
+      role: ROLES.SUPER_ADMIN,
+      organizationId: null
+    });
+    ok('Created super admin user for testing', !!adminUser);
 
-    // Temporary password reset or token issuance for admin login
-    const adminToken = userService.generateToken(adminUser);
+    const loginRes = await login(adminUser.email, 'AdminPassword123!');
+    ok('Super admin logged in successfully', loginRes.status === 200 && loginRes.data?.data?.token);
+    const adminToken = loginRes.data.data.token;
 
     const adminResultsRes = await request('GET', '/api/admin/results', {
       headers: { Authorization: `Bearer ${adminToken}` }

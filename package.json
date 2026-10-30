@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
-    "test": "node test/selftest.js && node test/validation-and-errors.test.js && node test/security-hardening.test.js && node test/auth-rbac.test.js && node test/database-hardening.test.js && node test/question-bank.test.js && node test/exam-builder.test.js && node test/exam-versioning.test.js && node test/coding-execution.test.js && node test/async-code-execution.test.js && node test/proctoring-analytics.test.js",
+    "test": "node test/selftest.js && node test/validation-and-errors.test.js && node test/security-hardening.test.js && node test/auth-rbac.test.js && node test/database-hardening.test.js && node test/question-bank.test.js && node test/exam-builder.test.js && node test/exam-versioning.test.js && node test/coding-execution.test.js && node test/async-code-execution.test.js && node test/proctoring-analytics.test.js && node test/network-session-recovery.test.js",
     "test:val": "node test/validation-and-errors.test.js",
     "test:sec": "node test/security-hardening.test.js",
     "test:auth": "node test/auth-rbac.test.js",
@@ -19,6 +19,7 @@
     "test:code": "node test/coding-execution.test.js",
     "test:async": "node test/async-code-execution.test.js",
     "test:proctoring": "node test/proctoring-analytics.test.js",
+    "test:recovery": "node test/network-session-recovery.test.js",
     "worker:code": "node backend/src/workers/code-execution.worker.js",
     "worker:outbox": "node backend/src/workers/outbox-dispatcher.js",
     "db:backup": "node backend/src/scripts/backup.js",
