@@ -10,6 +10,7 @@ const shuffleService = require('./shuffle.service');
 const judge0 = require('./judge0');
 const outboxDispatcher = require('../workers/outbox-dispatcher');
 const { recordAuditEvent } = require('./audit.service');
+const metrics = require('../utils/metrics');
 
 const randHex = (n) => crypto.randomBytes(n).toString('hex');
 const randAlnum = (n) => {
@@ -189,6 +190,7 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
     }
   }
 
+  const finalizeStart = Date.now();
   try {
     // 4. Drain any in-flight asynchronous coding submissions (Day 10 BullMQ coordination)
     // Done without holding an open SQLite write transaction so workers can write without lock contention
@@ -386,6 +388,7 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
     const finalRow = targetDb.prepare('SELECT * FROM attempts WHERE id = ?').get(att.id);
     const summary = resultSummary(finalRow, student ? student.name : '');
     summary.detail = detail;
+    metrics.recordFinalization(Date.now() - finalizeStart);
     return summary;
 
   } catch (err) {

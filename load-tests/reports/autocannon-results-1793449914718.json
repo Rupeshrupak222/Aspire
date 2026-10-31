@@ -1,0 +1,817 @@
+{
+  "timestamp": "2026-10-31T12:31:54.718Z",
+  "results": [
+    {
+      "endpoint": "GET /api/health",
+      "vus": 10,
+      "durationSec": 4,
+      "reqSec": 1335,
+      "latencies": {
+        "avg": 7,
+        "p50": 5,
+        "p90": 13,
+        "p95": 17.7,
+        "p97_5": 20,
+        "p99": 31,
+        "max": 104
+      },
+      "successCount": 5340,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 118.3,
+        "avgCpu": 100.3,
+        "peakRssMb": 184.3,
+        "avgRssMb": 171.6,
+        "peakHeapMb": 71.1,
+        "avgHeapMb": 54.5,
+        "peakElLagMs": 46.2,
+        "peakWalSizeKb": 1123,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "GET /api/config/public",
+      "vus": 10,
+      "durationSec": 4,
+      "reqSec": 1457,
+      "latencies": {
+        "avg": 6.4,
+        "p50": 5,
+        "p90": 11,
+        "p95": 15,
+        "p97_5": 17,
+        "p99": 25,
+        "max": 35
+      },
+      "successCount": 5829,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 156.8,
+        "avgCpu": 111.6,
+        "peakRssMb": 202.3,
+        "avgRssMb": 196.7,
+        "peakHeapMb": 77.4,
+        "avgHeapMb": 66.4,
+        "peakElLagMs": 31.15,
+        "peakWalSizeKb": 1123,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "GET /api/attempt/:token",
+      "vus": 10,
+      "durationSec": 4,
+      "reqSec": 883,
+      "latencies": {
+        "avg": 10.8,
+        "p50": 10,
+        "p90": 15,
+        "p95": 24.3,
+        "p97_5": 29,
+        "p99": 36,
+        "max": 61
+      },
+      "successCount": 3530,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 130.8,
+        "avgCpu": 97.8,
+        "peakRssMb": 220.1,
+        "avgRssMb": 211,
+        "peakHeapMb": 91.6,
+        "avgHeapMb": 74.3,
+        "peakElLagMs": 30.21,
+        "peakWalSizeKb": 1123,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/heartbeat",
+      "vus": 10,
+      "durationSec": 4,
+      "reqSec": 683,
+      "latencies": {
+        "avg": 14.2,
+        "p50": 12,
+        "p90": 21,
+        "p95": 28.3,
+        "p97_5": 32,
+        "p99": 35,
+        "max": 54
+      },
+      "successCount": 2730,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 108.4,
+        "avgCpu": 92.2,
+        "peakRssMb": 275.6,
+        "avgRssMb": 232.6,
+        "peakHeapMb": 112.8,
+        "avgHeapMb": 86,
+        "peakElLagMs": 34.57,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/progress/sync",
+      "vus": 10,
+      "durationSec": 4,
+      "reqSec": 843,
+      "latencies": {
+        "avg": 11.4,
+        "p50": 9,
+        "p90": 16,
+        "p95": 23.3,
+        "p97_5": 27,
+        "p99": 49,
+        "max": 99
+      },
+      "successCount": 0,
+      "non2xx": 3370,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 136.5,
+        "avgCpu": 98.9,
+        "peakRssMb": 299.9,
+        "avgRssMb": 289.2,
+        "peakHeapMb": 124.3,
+        "avgHeapMb": 101.9,
+        "peakElLagMs": 35.09,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/submit (idempotent)",
+      "vus": 10,
+      "durationSec": 4,
+      "reqSec": 1093,
+      "latencies": {
+        "avg": 8.7,
+        "p50": 7,
+        "p90": 15,
+        "p95": 20.3,
+        "p97_5": 23,
+        "p99": 32,
+        "max": 81
+      },
+      "successCount": 1000,
+      "non2xx": 3370,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 148.2,
+        "avgCpu": 91.2,
+        "peakRssMb": 308.1,
+        "avgRssMb": 300.3,
+        "peakHeapMb": 119.3,
+        "avgHeapMb": 98,
+        "peakElLagMs": 35.29,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "GET /api/certificate/:certId",
+      "vus": 10,
+      "durationSec": 4,
+      "reqSec": 58,
+      "latencies": {
+        "avg": 182.8,
+        "p50": 147,
+        "p90": 279,
+        "p95": 347,
+        "p97_5": 381,
+        "p99": 381,
+        "max": 381
+      },
+      "successCount": 230,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 103.5,
+        "avgCpu": 78.1,
+        "peakRssMb": 325.8,
+        "avgRssMb": 323.6,
+        "peakHeapMb": 141.5,
+        "avgHeapMb": 123.9,
+        "peakElLagMs": 38.44,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 13
+      }
+    },
+    {
+      "endpoint": "GET /api/health",
+      "vus": 100,
+      "durationSec": 4,
+      "reqSec": 1591,
+      "latencies": {
+        "avg": 62.5,
+        "p50": 48,
+        "p90": 111,
+        "p95": 177.7,
+        "p97_5": 211,
+        "p99": 276,
+        "max": 280
+      },
+      "successCount": 6364,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 124.7,
+        "avgCpu": 101.2,
+        "peakRssMb": 334.8,
+        "avgRssMb": 332.5,
+        "peakHeapMb": 130.9,
+        "avgHeapMb": 77.5,
+        "peakElLagMs": 47.97,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "GET /api/config/public",
+      "vus": 100,
+      "durationSec": 4,
+      "reqSec": 1423,
+      "latencies": {
+        "avg": 70.1,
+        "p50": 61,
+        "p90": 106,
+        "p95": 131.3,
+        "p97_5": 144,
+        "p99": 161,
+        "max": 178
+      },
+      "successCount": 5690,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 129,
+        "avgCpu": 106.3,
+        "peakRssMb": 341,
+        "avgRssMb": 336.5,
+        "peakHeapMb": 111.6,
+        "avgHeapMb": 88.2,
+        "peakElLagMs": 50.43,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "GET /api/attempt/:token",
+      "vus": 100,
+      "durationSec": 4,
+      "reqSec": 673,
+      "latencies": {
+        "avg": 148.8,
+        "p50": 114,
+        "p90": 213,
+        "p95": 255.7,
+        "p97_5": 277,
+        "p99": 286,
+        "max": 390
+      },
+      "successCount": 2690,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 108.8,
+        "avgCpu": 93.8,
+        "peakRssMb": 345.6,
+        "avgRssMb": 340,
+        "peakHeapMb": 111,
+        "avgHeapMb": 92,
+        "peakElLagMs": 63.21,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/heartbeat",
+      "vus": 100,
+      "durationSec": 4,
+      "reqSec": 1048,
+      "latencies": {
+        "avg": 96,
+        "p50": 83,
+        "p90": 149,
+        "p95": 181,
+        "p97_5": 197,
+        "p99": 204,
+        "max": 207
+      },
+      "successCount": 4190,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 109.8,
+        "avgCpu": 94.7,
+        "peakRssMb": 351.1,
+        "avgRssMb": 346.2,
+        "peakHeapMb": 126.5,
+        "avgHeapMb": 102.2,
+        "peakElLagMs": 67.24,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/progress/sync",
+      "vus": 100,
+      "durationSec": 4,
+      "reqSec": 773,
+      "latencies": {
+        "avg": 128.8,
+        "p50": 118,
+        "p90": 199,
+        "p95": 224.3,
+        "p97_5": 237,
+        "p99": 255,
+        "max": 298
+      },
+      "successCount": 0,
+      "non2xx": 3090,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 140.8,
+        "avgCpu": 91.6,
+        "peakRssMb": 342.1,
+        "avgRssMb": 340,
+        "peakHeapMb": 130.5,
+        "avgHeapMb": 104.5,
+        "peakElLagMs": 78.05,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/submit (idempotent)",
+      "vus": 100,
+      "durationSec": 4,
+      "reqSec": 1448,
+      "latencies": {
+        "avg": 69.4,
+        "p50": 55,
+        "p90": 138,
+        "p95": 168.7,
+        "p97_5": 184,
+        "p99": 307,
+        "max": 519
+      },
+      "successCount": 1000,
+      "non2xx": 4790,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 121.5,
+        "avgCpu": 95.2,
+        "peakRssMb": 350.4,
+        "avgRssMb": 342.9,
+        "peakHeapMb": 132,
+        "avgHeapMb": 103.9,
+        "peakElLagMs": 85.72,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "GET /api/certificate/:certId",
+      "vus": 100,
+      "durationSec": 4,
+      "reqSec": 63,
+      "latencies": {
+        "avg": 1733.4,
+        "p50": 1605,
+        "p90": 1903,
+        "p95": 2690.3,
+        "p97_5": 3084,
+        "p99": 3084,
+        "max": 3084
+      },
+      "successCount": 189,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 80,
+        "avgCpu": 74.2,
+        "peakRssMb": 339.7,
+        "avgRssMb": 339.7,
+        "peakHeapMb": 70.7,
+        "avgHeapMb": 59.9,
+        "peakElLagMs": 85.98,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 5
+      }
+    },
+    {
+      "endpoint": "GET /api/health",
+      "vus": 500,
+      "durationSec": 4,
+      "reqSec": 1232,
+      "latencies": {
+        "avg": 1026.4,
+        "p50": 773,
+        "p90": 2246,
+        "p95": 2623.3,
+        "p97_5": 2812,
+        "p99": 2892,
+        "max": 2908
+      },
+      "successCount": 4926,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 121.7,
+        "avgCpu": 98,
+        "peakRssMb": 344,
+        "avgRssMb": 340.4,
+        "peakHeapMb": 111.7,
+        "avgHeapMb": 81,
+        "peakElLagMs": 92.27,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 13
+      }
+    },
+    {
+      "endpoint": "GET /api/config/public",
+      "vus": 500,
+      "durationSec": 4,
+      "reqSec": 1609,
+      "latencies": {
+        "avg": 893.3,
+        "p50": 634,
+        "p90": 2000,
+        "p95": 2402.7,
+        "p97_5": 2604,
+        "p99": 2705,
+        "max": 2923
+      },
+      "successCount": 6435,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 127.9,
+        "avgCpu": 102.3,
+        "peakRssMb": 351.9,
+        "avgRssMb": 346.4,
+        "peakHeapMb": 117,
+        "avgHeapMb": 83.5,
+        "peakElLagMs": 99.16,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "GET /api/attempt/:token",
+      "vus": 500,
+      "durationSec": 4,
+      "reqSec": 670,
+      "latencies": {
+        "avg": 1404.8,
+        "p50": 760,
+        "p90": 3083,
+        "p95": 3352.3,
+        "p97_5": 3487,
+        "p99": 3571,
+        "max": 3676
+      },
+      "successCount": 2680,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 118.7,
+        "avgCpu": 94.9,
+        "peakRssMb": 369,
+        "avgRssMb": 354.8,
+        "peakHeapMb": 150.1,
+        "avgHeapMb": 110.4,
+        "peakElLagMs": 105.19,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 13
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/heartbeat",
+      "vus": 500,
+      "durationSec": 4,
+      "reqSec": 878,
+      "latencies": {
+        "avg": 1169.4,
+        "p50": 538,
+        "p90": 2844,
+        "p95": 3127.3,
+        "p97_5": 3269,
+        "p99": 3379,
+        "max": 3553
+      },
+      "successCount": 3511,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 109.7,
+        "avgCpu": 94.9,
+        "peakRssMb": 412.3,
+        "avgRssMb": 400.8,
+        "peakHeapMb": 175.9,
+        "avgHeapMb": 149.3,
+        "peakElLagMs": 106.36,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/progress/sync",
+      "vus": 500,
+      "durationSec": 4,
+      "reqSec": 450,
+      "latencies": {
+        "avg": 1274.9,
+        "p50": 793,
+        "p90": 3106,
+        "p95": 3458.7,
+        "p97_5": 3635,
+        "p99": 3814,
+        "max": 4198
+      },
+      "successCount": 0,
+      "non2xx": 1801,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 115.5,
+        "avgCpu": 86.3,
+        "peakRssMb": 416.9,
+        "avgRssMb": 402.4,
+        "peakHeapMb": 189.6,
+        "avgHeapMb": 163.1,
+        "peakElLagMs": 114.1,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 13
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/submit (idempotent)",
+      "vus": 500,
+      "durationSec": 4,
+      "reqSec": 885,
+      "latencies": {
+        "avg": 1188.6,
+        "p50": 434,
+        "p90": 2723,
+        "p95": 2945.7,
+        "p97_5": 3057,
+        "p99": 3119,
+        "max": 3218
+      },
+      "successCount": 1000,
+      "non2xx": 2538,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 110.6,
+        "avgCpu": 88,
+        "peakRssMb": 409.7,
+        "avgRssMb": 403,
+        "peakHeapMb": 208.4,
+        "avgHeapMb": 180.8,
+        "peakElLagMs": 114.82,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "GET /api/certificate/:certId",
+      "vus": 500,
+      "durationSec": 4,
+      "reqSec": 73,
+      "latencies": {
+        "avg": 2547.7,
+        "p50": 2495,
+        "p90": 4006,
+        "p95": 4006.7,
+        "p97_5": 4007,
+        "p99": 4007,
+        "max": 4007
+      },
+      "successCount": 220,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 98.4,
+        "avgCpu": 89.3,
+        "peakRssMb": 421.8,
+        "avgRssMb": 416.5,
+        "peakHeapMb": 185.6,
+        "avgHeapMb": 157.2,
+        "peakElLagMs": 114.82,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 5
+      }
+    },
+    {
+      "endpoint": "GET /api/health",
+      "vus": 1000,
+      "durationSec": 4,
+      "reqSec": 0,
+      "latencies": {
+        "avg": 0,
+        "p50": 0,
+        "p90": 0,
+        "p95": 0,
+        "p97_5": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "successCount": 0,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 101.1,
+        "avgCpu": 82,
+        "peakRssMb": 420.6,
+        "avgRssMb": 419.1,
+        "peakHeapMb": 103.4,
+        "avgHeapMb": 94.2,
+        "peakElLagMs": 115.41,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 4
+      }
+    },
+    {
+      "endpoint": "GET /api/config/public",
+      "vus": 1000,
+      "durationSec": 4,
+      "reqSec": 22,
+      "latencies": {
+        "avg": 3812.8,
+        "p50": 3664,
+        "p90": 4004,
+        "p95": 4004,
+        "p97_5": 4004,
+        "p99": 4004,
+        "max": 4004
+      },
+      "successCount": 88,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 105.4,
+        "avgCpu": 93,
+        "peakRssMb": 416.3,
+        "avgRssMb": 416.1,
+        "peakHeapMb": 98.5,
+        "avgHeapMb": 74.5,
+        "peakElLagMs": 115.93,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 13
+      }
+    },
+    {
+      "endpoint": "GET /api/attempt/:token",
+      "vus": 1000,
+      "durationSec": 4,
+      "reqSec": 22,
+      "latencies": {
+        "avg": 4077.9,
+        "p50": 4131,
+        "p90": 4132,
+        "p95": 4132.7,
+        "p97_5": 4133,
+        "p99": 4133,
+        "max": 4133
+      },
+      "successCount": 88,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 123.2,
+        "avgCpu": 87.7,
+        "peakRssMb": 417.3,
+        "avgRssMb": 415.1,
+        "peakHeapMb": 100.2,
+        "avgHeapMb": 72.7,
+        "peakElLagMs": 115.93,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/heartbeat",
+      "vus": 1000,
+      "durationSec": 4,
+      "reqSec": 168,
+      "latencies": {
+        "avg": 2675.4,
+        "p50": 2831,
+        "p90": 3651,
+        "p95": 4005,
+        "p97_5": 4182,
+        "p99": 4182,
+        "max": 4182
+      },
+      "successCount": 671,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 123.7,
+        "avgCpu": 95.6,
+        "peakRssMb": 425.8,
+        "avgRssMb": 418.4,
+        "peakHeapMb": 112.8,
+        "avgHeapMb": 87.3,
+        "peakElLagMs": 115.41,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 15
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/progress/sync",
+      "vus": 1000,
+      "durationSec": 4,
+      "reqSec": 44,
+      "latencies": {
+        "avg": 3262.9,
+        "p50": 3265,
+        "p90": 3745,
+        "p95": 3745,
+        "p97_5": 3745,
+        "p99": 3745,
+        "max": 3745
+      },
+      "successCount": 0,
+      "non2xx": 176,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 115.9,
+        "avgCpu": 84.6,
+        "peakRssMb": 426.2,
+        "avgRssMb": 419.4,
+        "peakHeapMb": 129.8,
+        "avgHeapMb": 106.4,
+        "peakElLagMs": 114.88,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "POST /api/attempt/:token/submit (idempotent)",
+      "vus": 1000,
+      "durationSec": 4,
+      "reqSec": 0,
+      "latencies": {
+        "avg": 0,
+        "p50": 0,
+        "p90": 0,
+        "p95": 0,
+        "p97_5": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "successCount": 0,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 89.5,
+        "avgCpu": 60.4,
+        "peakRssMb": 411.9,
+        "avgRssMb": 411.3,
+        "peakHeapMb": 135.4,
+        "avgHeapMb": 112.6,
+        "peakElLagMs": 115.93,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 14
+      }
+    },
+    {
+      "endpoint": "GET /api/certificate/:certId",
+      "vus": 1000,
+      "durationSec": 4,
+      "reqSec": 14,
+      "latencies": {
+        "avg": 3539.5,
+        "p50": 3540,
+        "p90": 3546,
+        "p95": 3546.7,
+        "p97_5": 3547,
+        "p99": 3547,
+        "max": 3547
+      },
+      "successCount": 54,
+      "non2xx": 0,
+      "error5xx": 0,
+      "system": {
+        "peakCpu": 104.3,
+        "avgCpu": 88.9,
+        "peakRssMb": 413.6,
+        "avgRssMb": 413,
+        "peakHeapMb": 142.4,
+        "avgHeapMb": 116.7,
+        "peakElLagMs": 116.2,
+        "peakWalSizeKb": 4023,
+        "sampleCount": 10
+      }
+    }
+  ]
+}

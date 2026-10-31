@@ -35,6 +35,7 @@ const examService = require('../services/exam.service');
 const { recordAuditEvent } = require('../services/audit.service');
 const proctoringRiskService = require('../services/proctoring-risk.service');
 const timerSubmissionService = require('../services/timer-submission.service');
+const metrics = require('../utils/metrics');
 const {
   createExamSchema,
   updateExamSchema,
@@ -916,6 +917,14 @@ router.put('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_UPD
   });
 
   res.json(updated);
+});
+
+// System & application performance metrics (Day 15)
+router.get('/metrics', requirePermission(PERMISSIONS.RESULTS_READ), (req, res) => {
+  res.json({
+    ok: true,
+    data: metrics.getSnapshot()
+  });
 });
 
 module.exports = router;

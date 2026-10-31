@@ -2,6 +2,7 @@
 // Maps known system/database errors to AppError, logs securely, and returns consistent JSON.
 const { AppError, ValidationError, ConflictError, ExternalServiceError } = require('../errors/app-error');
 const defaultLogger = require('../utils/logger');
+const metrics = require('../utils/metrics');
 
 function errorHandler(err, req, res, next) {
   const log = req.log || defaultLogger;
@@ -34,6 +35,7 @@ function errorHandler(err, req, res, next) {
     } else if (err.message.includes('CHECK constraint failed')) {
       error = new AppError('The requested operation violates database integrity constraints.', 400, 'CONSTRAINT_VIOLATION');
     } else if (err.code === 'SQLITE_BUSY' || err.message.includes('database is locked') || err.message.includes('resource busy')) {
+      metrics.recordDbOperation('busy', 0, true);
       error = new AppError('Database is temporarily busy. Please retry shortly.', 503, 'DATABASE_BUSY');
     } else {
       error = new AppError('A database error occurred. Please try again.', 500, 'DATABASE_ERROR');

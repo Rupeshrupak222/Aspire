@@ -3,6 +3,7 @@
 // crest-style logo mark, navy + gold palette, verification seal,
 // signature line (Co-Founder), and a recognitions strip.
 const PDFDocument = require('pdfkit');
+const metrics = require('../utils/metrics');
 
 // --- Adyapan palette ---
 const ORANGE = '#F97316';   // Adyapan brand accent
@@ -52,12 +53,35 @@ function drawSeal(doc, cx, cy, r) {
   doc.restore();
 }
 
+const certificateCache = new Map();
+const MAX_CACHE_SIZE = 1000;
+
+function clearCertificateCache() {
+  certificateCache.clear();
+}
+
 function generateCertificate({ name, percentage, scholarshipPct, certificateId, dateStr, brandName }) {
+  if (certificateId && certificateCache.has(certificateId)) {
+    return Promise.resolve(certificateCache.get(certificateId));
+  }
+
   return new Promise((resolve, reject) => {
+    const t0 = Date.now();
     const doc = new PDFDocument({ size: [842, 595], margin: 0 }); // A4 landscape
     const chunks = [];
     doc.on('data', (c) => chunks.push(c));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('end', () => {
+      metrics.recordCertGeneration(Date.now() - t0);
+      const buffer = Buffer.concat(chunks);
+      if (certificateId) {
+        if (certificateCache.size >= MAX_CACHE_SIZE) {
+          const oldestKey = certificateCache.keys().next().value;
+          certificateCache.delete(oldestKey);
+        }
+        certificateCache.set(certificateId, buffer);
+      }
+      resolve(buffer);
+    });
     doc.on('error', reject);
 
     const W = 842, H = 595;
