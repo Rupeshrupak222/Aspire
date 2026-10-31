@@ -1,16 +1,16 @@
 // Aspire Admin Panel — Authentication, RBAC, and Role-Aware Navigation.
-const TOKEN_KEY = 'aspire_auth_token';
+const ADMIN_AUTH_TOKEN_KEY = 'aspire_auth_token';
 const USER_KEY = 'aspire_auth_user';
 
 let currentUser = null;
 
 function getAuthToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
+  return localStorage.getItem(ADMIN_AUTH_TOKEN_KEY) || '';
 }
 
 function setSession(token, user) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  if (token) localStorage.setItem(ADMIN_AUTH_TOKEN_KEY, token);
+  else localStorage.removeItem(ADMIN_AUTH_TOKEN_KEY);
 
   if (user) {
     currentUser = user;
@@ -212,9 +212,6 @@ async function loadJudge0() {
     }
   } catch (e) { /* ignore */ }
 }
-
-/* ---------- Questions ---------- */
-let editingId = null;
 
 /* ---------- Question Bank 2.0 ---------- */
 let editingId = null;

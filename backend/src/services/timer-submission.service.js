@@ -209,7 +209,7 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
     let savedAnswers = {};
     try {
       savedAnswers = att.answers_json ? JSON.parse(att.answers_json) : {};
-    } catch {}
+    } catch { }
 
     let answers = {};
     if (isLate) {
@@ -234,7 +234,7 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
       try {
         const parsed = JSON.parse(att.questions_snapshot_json);
         if (Array.isArray(parsed) && parsed.length > 0) frozenList = parsed;
-      } catch {}
+      } catch { }
     }
 
     const qmap = new Map();
@@ -313,7 +313,7 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
         if (Array.isArray(snap.scholarship_slabs) && snap.scholarship_slabs.length > 0) {
           customSlabs = snap.scholarship_slabs;
         }
-      } catch {}
+      } catch { }
     }
 
     if (customSlabs) {
