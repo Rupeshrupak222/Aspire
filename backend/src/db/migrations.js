@@ -660,6 +660,67 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_attempts_finalization ON attempts(finalization_status);
         `);
       }
+    },
+    {
+      version: '012_multi_tenant_enforcement',
+      up: (d) => {
+        const addColIfMissing = (table, col, def) => {
+          const cols = d.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+          if (!cols.includes(col)) {
+            d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+          }
+        };
+
+        // 1. Ensure a default organization exists for legacy unassigned data
+        let defOrg = d.prepare("SELECT id FROM organizations ORDER BY id ASC LIMIT 1").get();
+        if (!defOrg) {
+          const res = d.prepare(`
+            INSERT INTO organizations (name, slug, status)
+            VALUES ('Adyapan Core', 'adyapan-core', 'ACTIVE')
+          `).run();
+          defOrg = { id: res.lastInsertRowid };
+        }
+        const defaultOrgId = defOrg.id;
+
+        // 2. Add organization_id to outbox_events, proctoring_events, attempt_sync_changes if missing
+        addColIfMissing('outbox_events', 'organization_id', 'INTEGER REFERENCES organizations(id) ON DELETE SET NULL');
+        addColIfMissing('proctoring_events', 'organization_id', 'INTEGER REFERENCES organizations(id) ON DELETE CASCADE');
+        addColIfMissing('attempt_sync_changes', 'organization_id', 'INTEGER REFERENCES organizations(id) ON DELETE CASCADE');
+
+        // 3. Backfill existing organization-owned parent entities with default organization if NULL
+        d.prepare("UPDATE questions SET organization_id = ? WHERE organization_id IS NULL").run(defaultOrgId);
+        d.prepare("UPDATE exams SET organization_id = ? WHERE organization_id IS NULL").run(defaultOrgId);
+        d.prepare("UPDATE students SET organization_id = ? WHERE organization_id IS NULL").run(defaultOrgId);
+        d.prepare("UPDATE attempts SET organization_id = ? WHERE organization_id IS NULL").run(defaultOrgId);
+        d.prepare("UPDATE coding_submissions SET organization_id = ? WHERE organization_id IS NULL").run(defaultOrgId);
+
+        // 4. Backfill child tables from parent attempts and coding submissions
+        d.exec(`
+          UPDATE proctoring_events
+          SET organization_id = (SELECT organization_id FROM attempts WHERE attempts.id = proctoring_events.attempt_id)
+          WHERE organization_id IS NULL AND attempt_id IS NOT NULL;
+          UPDATE proctoring_events SET organization_id = ${defaultOrgId} WHERE organization_id IS NULL;
+
+          UPDATE attempt_sync_changes
+          SET organization_id = (SELECT organization_id FROM attempts WHERE attempts.id = attempt_sync_changes.attempt_id)
+          WHERE organization_id IS NULL AND attempt_id IS NOT NULL;
+          UPDATE attempt_sync_changes SET organization_id = ${defaultOrgId} WHERE organization_id IS NULL;
+
+          UPDATE outbox_events
+          SET organization_id = (SELECT organization_id FROM coding_submissions WHERE coding_submissions.id = outbox_events.aggregate_id)
+          WHERE organization_id IS NULL AND aggregate_id IS NOT NULL;
+          UPDATE outbox_events SET organization_id = ${defaultOrgId} WHERE organization_id IS NULL;
+        `);
+
+        // 5. High-performance indexes for multi-tenant query routing and boundary enforcement
+        d.exec(`
+          CREATE INDEX IF NOT EXISTS idx_outbox_org ON outbox_events(organization_id);
+          CREATE INDEX IF NOT EXISTS idx_proctoring_org ON proctoring_events(organization_id);
+          CREATE INDEX IF NOT EXISTS idx_sync_changes_org ON attempt_sync_changes(organization_id);
+          CREATE INDEX IF NOT EXISTS idx_exams_org_status ON exams(organization_id, status);
+          CREATE INDEX IF NOT EXISTS idx_students_org_phone ON students(organization_id, phone);
+        `);
+      }
     }
   ];
 

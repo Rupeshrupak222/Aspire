@@ -218,8 +218,8 @@ function processBatchEvents(attempt, rawEvents, options = {}) {
 
   const insertEventStmt = targetDb.prepare(`
     INSERT INTO proctoring_events (
-      id, attempt_id, event_id, event_type, event_timestamp, risk_points, metadata_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      id, attempt_id, organization_id, event_id, event_type, event_timestamp, risk_points, metadata_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const checkExistingStmt = targetDb.prepare(`
@@ -256,7 +256,7 @@ function processBatchEvents(attempt, rawEvents, options = {}) {
       const sanitizedMeta = sanitizeMetadata(raw.metadata);
       const rowId = crypto.randomUUID();
 
-      insertEventStmt.run(rowId, attempt.id, eventId, eventType, eventTimestamp, points, sanitizedMeta);
+      insertEventStmt.run(rowId, attempt.id, attempt.organization_id || null, eventId, eventType, eventTimestamp, points, sanitizedMeta);
       acceptedCount++;
 
       // Check for suspicious pattern synthesis
@@ -272,6 +272,7 @@ function processBatchEvents(attempt, rawEvents, options = {}) {
         insertEventStmt.run(
           crypto.randomUUID(),
           attempt.id,
+          attempt.organization_id || null,
           patternEventId,
           PROCTORING_EVENTS.SUSPICIOUS_PATTERN,
           new Date().toISOString(),

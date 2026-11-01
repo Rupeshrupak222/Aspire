@@ -38,11 +38,20 @@ const updateOrganizationSchema = z.object({
   status: z.enum(['ACTIVE', 'SUSPENDED']).optional()
 });
 
+const onboardOrganizationSchema = z.object({
+  name: z.string().trim().min(1, 'Organization name is required').max(100),
+  slug: z.string().trim().min(1, 'Slug is required').max(50).regex(/^[a-z0-9-]+$/, 'Slug must only contain lowercase alphanumeric characters and hyphens').optional(),
+  admin_name: z.string().trim().min(1).max(100).optional(),
+  admin_email: z.string().trim().email('Invalid admin email format').max(255),
+  admin_password: z.string().min(8, 'Admin password must be at least 8 characters long').max(128)
+});
+
 module.exports = {
   loginSchema,
   changePasswordSchema,
   createUserSchema,
   updateUserSchema,
   createOrganizationSchema,
-  updateOrganizationSchema
+  updateOrganizationSchema,
+  onboardOrganizationSchema
 };

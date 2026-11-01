@@ -295,24 +295,30 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
   // Transactionally register student and attempt with frozen snapshots
   const executeRegistration = db.transaction(() => {
     let studentId;
+    const assignedOrgId = (targetExam && targetExam.organization_id)
+      ? targetExam.organization_id
+      : (db.prepare('SELECT id FROM organizations ORDER BY id ASC LIMIT 1').get()?.id || 1);
+
     if (student) {
       studentId = student.id;
-      // Update any updated contact details
+      // Update any updated contact details and ensure organization association
       db.prepare(`
         UPDATE students SET name = ?, email = COALESCE(?, email), college = COALESCE(?, college),
                             city = COALESCE(?, city), grad_year = COALESCE(?, grad_year),
-                            track = COALESCE(?, track), campaign_code = COALESCE(?, campaign_code)
+                            track = COALESCE(?, track), campaign_code = COALESCE(?, campaign_code),
+                            organization_id = COALESCE(organization_id, ?)
         WHERE id = ?
-      `).run(name, email || null, college || null, city || null, grad_year || null, track || null, campaign_code || null, studentId);
+      `).run(name, email || null, college || null, city || null, grad_year || null, track || null, campaign_code || null, assignedOrgId, studentId);
     } else {
       const ins = db.prepare(`INSERT INTO students
-        (name, phone, email, college, city, grad_year, track, campaign_code)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+        (name, phone, email, college, city, grad_year, track, campaign_code, organization_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       const s = ins.run(
         name, normPhone,
         email || null, college || null,
         city || null, grad_year || null,
-        track || null, campaign_code || null
+        track || null, campaign_code || null,
+        assignedOrgId
       );
       studentId = s.lastInsertRowid;
     }
@@ -322,7 +328,6 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
     const graceSec = 60;
     const deadline_at = timerSubmissionService.calculateAuthoritativeDeadline(started_at, durationMin, graceSec);
     const expires_at = deadline_at;
-    const assignedOrgId = targetExam ? targetExam.organization_id : null;
     db.prepare(`
       INSERT INTO attempts (
         token, student_id, exam_id, exam_version, organization_id, started_at, expires_at, deadline_at, grace_period_seconds,
@@ -656,16 +661,18 @@ router.post('/attempt/:token/code-submit', codeExecutionLimiter, validate({ para
 
     db.prepare(`
       INSERT INTO outbox_events (
-        id, event_type, aggregate_id, payload_json, status, attempt_count, available_at
-      ) VALUES (?, ?, ?, ?, ?, 0, datetime('now'))
+        id, event_type, aggregate_id, organization_id, payload_json, status, attempt_count, available_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))
     `).run(
       outboxId,
       'CODE_EXECUTION_REQUESTED',
       submissionId,
+      att.organization_id || null,
       JSON.stringify({
         submissionId,
         attemptId: att.id,
         questionId: question.id,
+        organizationId: att.organization_id || null,
         submissionType: 'FINAL'
       }),
       OUTBOX_STATUS.PENDING
@@ -766,6 +773,7 @@ router.get('/certificate/:certificateId', certificateLimiter, validate({ params:
       percentage: att.percentage,
       scholarshipPct: att.scholarship_pct,
       certificateId: att.certificate_id,
+      organizationId: att.organization_id || null,
       dateStr: new Date(att.submitted_at + 'Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
       brandName: cfg.brand_name || 'Adyapan'
     });

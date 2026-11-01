@@ -56,13 +56,25 @@ function drawSeal(doc, cx, cy, r) {
 const certificateCache = new Map();
 const MAX_CACHE_SIZE = 1000;
 
+function getCertificateCacheKey(organizationId, certificateId) {
+  const orgPart = organizationId !== undefined && organizationId !== null ? String(organizationId) : 'global';
+  return `${orgPart}:${certificateId}`;
+}
+
 function clearCertificateCache() {
   certificateCache.clear();
 }
 
-function generateCertificate({ name, percentage, scholarshipPct, certificateId, dateStr, brandName }) {
-  if (certificateId && certificateCache.has(certificateId)) {
-    return Promise.resolve(certificateCache.get(certificateId));
+function getCachedCertificate(organizationId, certificateId) {
+  if (!certificateId) return null;
+  const key = getCertificateCacheKey(organizationId, certificateId);
+  return certificateCache.get(key) || null;
+}
+
+function generateCertificate({ name, percentage, scholarshipPct, certificateId, dateStr, brandName, organizationId = null }) {
+  const cacheKey = certificateId ? getCertificateCacheKey(organizationId, certificateId) : null;
+  if (cacheKey && certificateCache.has(cacheKey)) {
+    return Promise.resolve(certificateCache.get(cacheKey));
   }
 
   return new Promise((resolve, reject) => {
@@ -73,12 +85,12 @@ function generateCertificate({ name, percentage, scholarshipPct, certificateId, 
     doc.on('end', () => {
       metrics.recordCertGeneration(Date.now() - t0);
       const buffer = Buffer.concat(chunks);
-      if (certificateId) {
+      if (cacheKey) {
         if (certificateCache.size >= MAX_CACHE_SIZE) {
           const oldestKey = certificateCache.keys().next().value;
           certificateCache.delete(oldestKey);
         }
-        certificateCache.set(certificateId, buffer);
+        certificateCache.set(cacheKey, buffer);
       }
       resolve(buffer);
     });
@@ -181,4 +193,9 @@ function generateCertificate({ name, percentage, scholarshipPct, certificateId, 
   });
 }
 
-module.exports = { generateCertificate };
+module.exports = {
+  generateCertificate,
+  getCertificateCacheKey,
+  getCachedCertificate,
+  clearCertificateCache
+};

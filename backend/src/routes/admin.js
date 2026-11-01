@@ -22,10 +22,12 @@ const {
   createUserSchema,
   updateUserSchema,
   createOrganizationSchema,
-  updateOrganizationSchema
+  updateOrganizationSchema,
+  onboardOrganizationSchema
 } = require('../validation/auth.schemas');
 
 const { adminAuthLimiter } = require('../security/rate-limit');
+const { tenantContextMiddleware } = require('../middleware/tenant-context');
 const { PERMISSIONS, ROLES } = require('../security/rbac');
 const { escapeLike } = require('../security/sanitizer');
 const userService = require('../services/user.service');
@@ -55,6 +57,9 @@ router.use(adminAuthLimiter);
 
 // 2. Authentication enforcement on all admin routes
 router.use(requireAuth);
+
+// 3. Multi-tenant AsyncLocalStorage context binding
+router.use(tenantContextMiddleware);
 
 /* ---------- Judge0 Status ---------- */
 router.get('/judge0-status', requirePermission(PERMISSIONS.QUESTIONS_READ), (req, res) => {
@@ -885,6 +890,28 @@ router.post('/organizations', requirePermission(PERMISSIONS.ORGANIZATIONS_CREATE
   res.status(201).json(org);
 });
 
+router.post('/organizations/onboard', requirePermission(PERMISSIONS.ORGANIZATIONS_CREATE), validate({ body: onboardOrganizationSchema }), async (req, res, next) => {
+  try {
+    const result = await orgService.onboardOrganization({
+      name: req.body.name,
+      slug: req.body.slug,
+      adminName: req.body.admin_name,
+      adminEmail: req.body.admin_email,
+      adminPassword: req.body.admin_password
+    });
+
+    recordAuditEvent({
+      req,
+      event: 'organization_onboarded',
+      details: { orgId: result.organization.id, name: result.organization.name, adminId: result.admin.id }
+    });
+
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_READ), validate({ params: idParamSchema }), (req, res, next) => {
   const org = orgService.findOrganizationById(req.params.id);
   if (!org) return next(new NotFoundError('Organization not found'));
@@ -919,10 +946,30 @@ router.put('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_UPD
   res.json(updated);
 });
 
-// System & application performance metrics (Day 15)
-router.get('/metrics', requirePermission(PERMISSIONS.RESULTS_READ), (req, res) => {
+// System & application performance metrics (Day 15 / Day 16)
+router.get('/metrics', requirePermission(PERMISSIONS.RESULTS_READ), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    // Tenant-specific business metrics only (do not leak platform-wide system telemetry)
+    const orgId = req.user.organization_id;
+    const attemptCount = db.prepare('SELECT count(*) as count FROM attempts WHERE organization_id = ?').get(orgId)?.count || 0;
+    const questionCount = db.prepare('SELECT count(*) as count FROM questions WHERE organization_id = ?').get(orgId)?.count || 0;
+    const studentCount = db.prepare('SELECT count(*) as count FROM students WHERE organization_id = ?').get(orgId)?.count || 0;
+
+    return res.json({
+      ok: true,
+      scoped: 'organization',
+      organizationId: orgId,
+      data: {
+        totalAttempts: attemptCount,
+        totalQuestions: questionCount,
+        totalStudents: studentCount
+      }
+    });
+  }
+
   res.json({
     ok: true,
+    scoped: 'platform',
     data: metrics.getSnapshot()
   });
 });

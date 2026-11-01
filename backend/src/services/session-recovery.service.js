@@ -135,8 +135,8 @@ function processProgressSync(attempt, syncPayload, options = {}) {
 
   const insertChangeStmt = targetDb.prepare(`
     INSERT INTO attempt_sync_changes (
-      id, attempt_id, change_type, question_id, revision, payload_json, client_session_id, applied_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      id, attempt_id, organization_id, change_type, question_id, revision, payload_json, client_session_id, applied_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
   `);
 
   const getLatestRevisionStmt = targetDb.prepare(`
@@ -267,6 +267,7 @@ function processProgressSync(attempt, syncPayload, options = {}) {
       insertChangeStmt.run(
         changeId,
         attempt.id,
+        attempt.organization_id || null,
         changeType,
         qid,
         revision,

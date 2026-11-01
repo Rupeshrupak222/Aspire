@@ -2,6 +2,7 @@
 // Records security-relevant events to Pino structured logs and the SQLite audit_logs table.
 const { db } = require('../db');
 const logger = require('../utils/logger');
+const { getTenantContext } = require('../utils/tenant-context');
 
 function recordAuditEvent({
   req = null,
@@ -12,10 +13,13 @@ function recordAuditEvent({
   details = null,
   ipAddress = null
 }) {
-  const reqId = requestId || (req && (req.id || req.headers?.['x-request-id'])) || null;
+  const tenantCtx = getTenantContext();
+  const reqId = requestId || (req && (req.id || req.headers?.['x-request-id'])) || tenantCtx?.requestId || null;
   const ip = ipAddress || (req && (req.ip || req.connection?.remoteAddress)) || null;
-  const uid = userId !== undefined && userId !== null ? userId : (req && req.user ? req.user.id : null);
-  const orgId = organizationId !== undefined && organizationId !== null ? organizationId : (req && req.user ? req.user.organization_id : null);
+  const uid = userId !== undefined && userId !== null ? userId : (req && req.user ? req.user.id : (tenantCtx?.userId || null));
+  const orgId = organizationId !== undefined && organizationId !== null
+    ? organizationId
+    : (tenantCtx?.organizationId || (req && req.user ? req.user.organization_id : null));
 
   // 1. Structured Pino log
   const logData = {

@@ -10,6 +10,7 @@ const {
 } = require('../services/code-execution/constants');
 const snapshotService = require('../services/snapshot.service');
 const { ExternalServiceError } = require('../errors/app-error');
+const { createTenantContext, runWithTenant } = require('../utils/tenant-context');
 const logger = require('../utils/logger');
 
 /**
@@ -61,7 +62,34 @@ async function processCodeJob(jobData) {
     return { success: false, submissionId, status: SUBMISSION_LIFECYCLE.FAILED, error: 'ATTEMPT_NOT_FOUND' };
   }
 
-  // 4. Verify snapshot HMAC integrity
+  // 3b. Verify cross-tenant boundary integrity between submission and attempt
+  if (
+    submission.organization_id &&
+    attempt.organization_id &&
+    Number(submission.organization_id) !== Number(attempt.organization_id)
+  ) {
+    logger.error({
+      submissionId,
+      submissionOrg: submission.organization_id,
+      attemptOrg: attempt.organization_id
+    }, 'Cross-tenant boundary violation detected in background worker');
+    db.prepare(`
+      UPDATE coding_submissions
+      SET lifecycle_status = ?, submission_status = ?, error_message = ?, completed_at = datetime('now')
+      WHERE id = ?
+    `).run(SUBMISSION_LIFECYCLE.FAILED, EXECUTION_STATUS.SYSTEM_ERROR, 'Cross-tenant violation: submission and attempt organization mismatch', submissionId);
+    return { success: false, submissionId, status: SUBMISSION_LIFECYCLE.FAILED, error: 'CROSS_TENANT_VIOLATION' };
+  }
+
+  const effectiveOrgId = submission.organization_id || attempt.organization_id || null;
+  const tenantCtx = createTenantContext({
+    organizationId: effectiveOrgId,
+    requestId: `worker_${submissionId}`,
+    isPlatformAdmin: false
+  });
+
+  return runWithTenant(tenantCtx, async () => {
+    // 4. Verify snapshot HMAC integrity
   try {
     snapshotService.verifySnapshotIntegrity(attempt);
   } catch (snapErr) {
@@ -234,15 +262,16 @@ async function processCodeJob(jobData) {
     score
   }, 'Code execution job completed and persisted to SQLite');
 
-  return {
-    success: true,
-    submissionId,
-    status: SUBMISSION_LIFECYCLE.COMPLETED,
-    verdict: evaluation.status,
-    score,
-    testsPassed: evaluation.testsPassed,
-    testsTotal: evaluation.testsTotal
-  };
+    return {
+      success: true,
+      submissionId,
+      status: SUBMISSION_LIFECYCLE.COMPLETED,
+      verdict: evaluation.status,
+      score,
+      testsPassed: evaluation.testsPassed,
+      testsTotal: evaluation.testsTotal
+    };
+  });
 }
 
 module.exports = {
