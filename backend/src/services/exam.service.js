@@ -500,9 +500,9 @@ function addQuestionToSection(examId, sectionId, questionId, user, req = null) {
   const question = db.prepare('SELECT * FROM questions WHERE id = ?').get(questionId);
   if (!question) throw new NotFoundError(`Question ${questionId} not found`);
 
-  // Verify tenant access to question
+  // Verify tenant access to question (shared platform library / default org 1 is accessible to all)
   if (user.role !== ROLES.SUPER_ADMIN && user.organization_id && question.organization_id) {
-    if (question.organization_id !== user.organization_id) {
+    if (question.organization_id !== user.organization_id && question.organization_id !== 1) {
       throw new AuthorizationError('Cannot attach question from another organization');
     }
   }
@@ -772,7 +772,7 @@ function validateExamForPublish(examId) {
         const params = [];
 
         if (exam.organization_id) {
-          where.push('(organization_id = ? OR organization_id IS NULL)');
+          where.push('(organization_id = ? OR organization_id IS NULL OR organization_id = 1)');
           params.push(exam.organization_id);
         }
 
@@ -1102,7 +1102,7 @@ function generateExamAttemptQuestions(examId, judge0Available = true) {
         const params = [];
 
         if (exam.organization_id) {
-          where.push('(organization_id = ? OR organization_id IS NULL)');
+          where.push('(organization_id = ? OR organization_id IS NULL OR organization_id = 1)');
           params.push(exam.organization_id);
         }
         if (r.type) {
