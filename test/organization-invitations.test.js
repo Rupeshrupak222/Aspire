@@ -51,7 +51,7 @@ async function waitForServer() {
     try {
       const r = await fetch(BASE + '/api/health');
       if (r.ok) return true;
-    } catch {}
+    } catch { }
     await wait(250);
   }
   return false;
@@ -77,7 +77,7 @@ async function runSuite() {
   console.log('====================================================\n');
 
   for (const ext of ['', '-wal', '-shm']) {
-    try { fs.unlinkSync(DB_FILE + ext); } catch {}
+    try { fs.unlinkSync(DB_FILE + ext); } catch { }
   }
 
   const serverProc = spawn('node', ['backend/server.js'], {
@@ -297,7 +297,7 @@ async function runSuite() {
   } finally {
     serverProc.kill();
     for (const ext of ['', '-wal', '-shm']) {
-      try { fs.unlinkSync(DB_FILE + ext); } catch {}
+      try { fs.unlinkSync(DB_FILE + ext); } catch { }
     }
   }
 
