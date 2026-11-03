@@ -721,6 +721,70 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_students_org_phone ON students(organization_id, phone);
         `);
       }
+    },
+    {
+      version: '013_organization_management',
+      up: (d) => {
+        const addColIfMissing = (table, col, def) => {
+          const cols = d.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+          if (!cols.includes(col)) {
+            d.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+          }
+        };
+
+        // 1. Add missing profile and branding fields to organizations
+        addColIfMissing('organizations', 'email', 'TEXT');
+        addColIfMissing('organizations', 'phone', 'TEXT');
+        addColIfMissing('organizations', 'website', 'TEXT');
+        addColIfMissing('organizations', 'logo_url', 'TEXT');
+        addColIfMissing('organizations', 'primary_color', "TEXT NOT NULL DEFAULT '#0B1F3A'");
+        addColIfMissing('organizations', 'secondary_color', "TEXT NOT NULL DEFAULT '#13294B'");
+        addColIfMissing('organizations', 'accent_color', "TEXT NOT NULL DEFAULT '#F97316'");
+        addColIfMissing('organizations', 'certificate_branding_json', "TEXT NOT NULL DEFAULT '{}'");
+        addColIfMissing('organizations', 'timezone', "TEXT NOT NULL DEFAULT 'Asia/Kolkata'");
+        addColIfMissing('organizations', 'created_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
+        addColIfMissing('organizations', 'updated_by', 'INTEGER REFERENCES users(id) ON DELETE SET NULL');
+
+        // Indexes on organizations
+        d.exec(`
+          CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
+          CREATE INDEX IF NOT EXISTS idx_organizations_status ON organizations(status);
+          CREATE INDEX IF NOT EXISTS idx_organizations_email ON organizations(email);
+        `);
+
+        // 2. Create organization_invitations table
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_invitations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            email TEXT NOT NULL,
+            role TEXT NOT NULL CHECK(role IN ('ORG_ADMIN', 'EXAM_MANAGER', 'EVALUATOR', 'VIEWER')),
+            token_hash TEXT NOT NULL UNIQUE,
+            invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            expires_at TEXT NOT NULL,
+            accepted_at TEXT,
+            revoked_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_org_invitations_token ON organization_invitations(token_hash);
+          CREATE INDEX IF NOT EXISTS idx_org_invitations_org_email ON organization_invitations(organization_id, email);
+          CREATE INDEX IF NOT EXISTS idx_org_invitations_expires ON organization_invitations(expires_at);
+        `);
+
+        // 3. Create organization_status_history table
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_status_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            previous_status TEXT NOT NULL,
+            new_status TEXT NOT NULL,
+            reason TEXT,
+            changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_org_status_history_org ON organization_status_history(organization_id);
+        `);
+      }
     }
   ];
 

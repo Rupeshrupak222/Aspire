@@ -226,6 +226,18 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
         message: 'This exam is not currently active for candidate attempts.'
       });
     }
+
+    if (targetExam.organization_id) {
+      const org = db.prepare('SELECT id, status FROM organizations WHERE id = ?').get(targetExam.organization_id);
+      if (org && org.status !== 'ACTIVE') {
+        return res.status(403).json({
+          success: false,
+          error: 'ORGANIZATION_INACTIVE',
+          code: 'ORGANIZATION_INACTIVE',
+          message: 'The organization hosting this assessment is currently suspended or inactive.'
+        });
+      }
+    }
   }
 
   const targetExamId = targetExam ? targetExam.id : null;

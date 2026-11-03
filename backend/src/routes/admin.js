@@ -32,6 +32,7 @@ const { PERMISSIONS, ROLES } = require('../security/rbac');
 const { escapeLike } = require('../security/sanitizer');
 const userService = require('../services/user.service');
 const orgService = require('../services/organization.service');
+const invitationService = require('../services/invitation.service');
 const questionService = require('../services/question.service');
 const examService = require('../services/exam.service');
 const { recordAuditEvent } = require('../services/audit.service');
@@ -869,25 +870,34 @@ router.post('/users/:id/enable', requirePermission(PERMISSIONS.USERS_DISABLE), v
 
 /* ---------- Organizations Management (Multi-Tenancy) ---------- */
 
-router.get('/organizations', requirePermission(PERMISSIONS.ORGANIZATIONS_READ), (req, res) => {
-  if (req.user.role === ROLES.SUPER_ADMIN) {
-    return res.json(orgService.listOrganizations());
+router.get('/organizations', requirePermission(PERMISSIONS.ORGANIZATIONS_READ), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    return next(new AuthorizationError('Only Super Administrators can list platform organizations. Organization administrators must use /api/organization.'));
   }
-  // Org Admin only sees their own organization
-  const org = orgService.findOrganizationById(req.user.organization_id);
-  res.json(org ? [org] : []);
+  if (req.query && (req.query.page || req.query.search || req.query.status || req.query.limit)) {
+    const result = orgService.listOrganizationsPaginated(req.query);
+    return res.json({ success: true, data: result.data, pagination: result.pagination });
+  }
+  return res.json(orgService.listOrganizations());
 });
 
-router.post('/organizations', requirePermission(PERMISSIONS.ORGANIZATIONS_CREATE), validate(createOrganizationSchema), (req, res) => {
-  const org = orgService.createOrganization(req.body);
+router.post('/organizations', requirePermission(PERMISSIONS.ORGANIZATIONS_CREATE), (req, res, next) => {
+  try {
+    const org = orgService.createOrganization({
+      ...req.body,
+      created_by: req.user.id
+    });
 
-  recordAuditEvent({
-    req,
-    event: 'organization_created',
-    details: { orgId: org.id, name: org.name, slug: org.slug }
-  });
+    recordAuditEvent({
+      req,
+      event: 'organization_created',
+      details: { orgId: org.id, name: org.name, slug: org.slug }
+    });
 
-  res.status(201).json(org);
+    res.status(201).json(org);
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/organizations/onboard', requirePermission(PERMISSIONS.ORGANIZATIONS_CREATE), validate({ body: onboardOrganizationSchema }), async (req, res, next) => {
@@ -925,7 +935,8 @@ router.get('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_REA
   res.json(org);
 });
 
-router.put('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), validate({ params: idParamSchema, body: updateOrganizationSchema }), (req, res, next) => {
+// Update organization (PUT and PATCH)
+const handleOrgUpdate = (req, res, next) => {
   const org = orgService.findOrganizationById(req.params.id);
   if (!org) return next(new NotFoundError('Organization not found'));
 
@@ -935,15 +946,144 @@ router.put('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_UPD
     return next(new AuthorizationError('Access denied: cannot update another organization.'));
   }
 
-  const updated = orgService.updateOrganization(req.params.id, req.body);
+  try {
+    const updated = orgService.updateOrganization(req.params.id, req.body, {
+      actorId: req.user.id,
+      isSuperAdmin: req.user.role === ROLES.SUPER_ADMIN
+    });
 
-  recordAuditEvent({
-    req,
-    event: 'organization_updated',
-    details: { orgId: org.id }
-  });
+    recordAuditEvent({
+      req,
+      event: 'organization_updated',
+      details: { orgId: org.id }
+    });
 
-  res.json(updated);
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.put('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), validate({ params: idParamSchema }), handleOrgUpdate);
+router.patch('/organizations/:id', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), validate({ params: idParamSchema }), handleOrgUpdate);
+
+// Disable / Suspend Organization (SUPER_ADMIN only)
+router.post('/organizations/:id/disable', requirePermission(PERMISSIONS.ORGANIZATIONS_CREATE), validate({ params: idParamSchema }), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    return next(new AuthorizationError('Only Super Administrators can suspend or disable organizations.'));
+  }
+  try {
+    const disabled = orgService.disableOrganization(req.params.id, {
+      reason: req.body && req.body.reason ? req.body.reason : 'Suspended by platform administrator',
+      actorId: req.user.id
+    });
+
+    recordAuditEvent({
+      req,
+      event: 'organization_disabled',
+      details: { orgId: req.params.id, reason: req.body && req.body.reason }
+    });
+
+    res.json({ success: true, data: disabled, message: 'Organization has been suspended/disabled.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Enable / Reactivate Organization (SUPER_ADMIN only)
+router.post('/organizations/:id/enable', requirePermission(PERMISSIONS.ORGANIZATIONS_CREATE), validate({ params: idParamSchema }), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    return next(new AuthorizationError('Only Super Administrators can reactivate organizations.'));
+  }
+  try {
+    const enabled = orgService.enableOrganization(req.params.id, {
+      actorId: req.user.id
+    });
+
+    recordAuditEvent({
+      req,
+      event: 'organization_enabled',
+      details: { orgId: req.params.id }
+    });
+
+    res.json({ success: true, data: enabled, message: 'Organization has been reactivated.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Organization Invitations (Admin)
+router.post('/organizations/:id/invitations', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), validate({ params: idParamSchema }), async (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN && Number(req.user.organization_id) !== Number(req.params.id)) {
+    return next(new AuthorizationError('Access denied: cannot invite administrators to another organization.'));
+  }
+  try {
+    const result = await invitationService.createInvitation({
+      organizationId: req.params.id,
+      email: req.body.email,
+      role: req.body.role || 'ORG_ADMIN',
+      invitedBy: req.user.id
+    });
+
+    recordAuditEvent({
+      req,
+      event: 'admin_invited',
+      organizationId: req.params.id,
+      details: { email: req.body.email, role: req.body.role }
+    });
+
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/organizations/:id/invitations', requirePermission(PERMISSIONS.ORGANIZATIONS_READ), validate({ params: idParamSchema }), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN && Number(req.user.organization_id) !== Number(req.params.id)) {
+    return next(new AuthorizationError('Access denied: cannot view invitations for another organization.'));
+  }
+  const list = invitationService.listInvitations(req.params.id);
+  res.json({ success: true, data: list });
+});
+
+router.post('/organizations/:id/invitations/:invitationId/revoke', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN && Number(req.user.organization_id) !== Number(req.params.id)) {
+    return next(new AuthorizationError('Access denied: cannot revoke invitations for another organization.'));
+  }
+  try {
+    const result = invitationService.revokeInvitation(req.params.invitationId, { organizationId: req.params.id });
+    recordAuditEvent({
+      req,
+      event: 'invitation_revoked',
+      organizationId: req.params.id,
+      details: { invitationId: req.params.invitationId }
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Organization Usage (Admin)
+router.get('/organizations/:id/usage', requirePermission(PERMISSIONS.ANALYTICS_READ), validate({ params: idParamSchema }), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN && Number(req.user.organization_id) !== Number(req.params.id)) {
+    return next(new AuthorizationError('Access denied: cannot view usage for another organization.'));
+  }
+  try {
+    const usage = orgService.getOrganizationUsage(req.params.id);
+    res.json({ success: true, data: usage });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Platform-Wide Organization Usage (SUPER_ADMIN only)
+router.get('/organizations-platform-usage', requirePermission(PERMISSIONS.ANALYTICS_READ), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    return next(new AuthorizationError('Only Super Administrators can view platform-wide organization usage.'));
+  }
+  const usage = orgService.getPlatformOrganizationsUsage();
+  res.json({ success: true, data: usage });
 });
 
 // System & application performance metrics (Day 15 / Day 16)

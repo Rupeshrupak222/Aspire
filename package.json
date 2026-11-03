@@ -22,6 +22,8 @@
     "test:recovery": "node test/network-session-recovery.test.js",
     "test:timer": "node test/timer-submission-reliability.test.js",
     "test:tenant": "node test/multi-tenant-isolation.test.js",
+    "test:day17": "node test/organization-management.test.js && node test/organization-branding.test.js && node test/organization-invitations.test.js && node test/organization-usage.test.js",
+    "test:org": "npm run test:day17",
     "test:unit": "node test/unit.test.js",
     "test:integration": "node test/integration.test.js",
     "test:api": "node test/api.test.js",
@@ -29,7 +31,7 @@
     "test:failure": "node test/failure-injection.test.js",
     "test:e2e": "node test/e2e.test.js",
     "test:load": "node test/load.test.js",
-    "test:regression": "npm test && npm run test:tenant && npm run test:unit && npm run test:integration && npm run test:api && npm run test:security && npm run test:failure && npm run test:e2e",
+    "test:regression": "npm test && npm run test:tenant && npm run test:day17 && npm run test:unit && npm run test:integration && npm run test:api && npm run test:security && npm run test:failure && npm run test:e2e",
     "load:k6:smoke": "node load-tests/run-k6.js full-journey smoke",
     "load:k6:baseline": "node load-tests/run-k6.js full-journey baseline",
     "load:k6:medium": "node load-tests/run-k6.js full-journey medium",
@@ -46,6 +48,7 @@
     "bootstrap:admin": "node backend/src/scripts/bootstrap-admin.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1161.0",
     "bcrypt": "^6.0.0",
     "better-sqlite3": "^13.0.3",
     "bullmq": "^6.5.1",
@@ -58,6 +61,7 @@
     "ioredis": "^5.11.1",
     "ioredis-mock": "^8.13.1",
     "jose": "^6.2.13",
+    "multer": "^2.5.0",
     "papaparse": "^5.7.0",
     "pdfkit": "^0.17.1",
     "pino": "^10.4.0",

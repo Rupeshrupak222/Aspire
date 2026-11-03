@@ -43,6 +43,8 @@
       <button class="tab" data-tab="results" id="tab-results">Results</button>
       <button class="tab" data-tab="report" id="tab-report">College Report</button>
       <button class="tab" data-tab="users" id="tab-users" style="display:none">Users</button>
+      <button class="tab" data-tab="organizations" id="tab-organizations" style="display:none">Organizations</button>
+      <button class="tab" data-tab="branding" id="tab-branding" style="display:none">Branding & Profile</button>
     </div>
 
     <!-- Exams Tab (Exam Builder 2.0) -->
@@ -327,6 +329,259 @@
         <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th>Actions</th></tr></thead>
         <tbody id="usersBody"></tbody>
       </table>
+    </div>
+
+    <!-- Organizations Tab (SUPER_ADMIN) -->
+    <div class="tabpane card" id="pane-organizations" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+        <div>
+          <h2 style="margin:0">Organizations Management</h2>
+          <span style="font-size:13px;color:var(--muted)">Manage multi-tenant institution accounts, view usage, invite administrators, or toggle status.</span>
+        </div>
+        <button id="createOrgBtn" class="btn small">+ Create Organization</button>
+      </div>
+
+      <!-- Filters & Search -->
+      <div class="row" style="margin-bottom:14px;align-items:center">
+        <div style="flex:2">
+          <input id="orgSearchInput" placeholder="Search by organization name, slug, or email..." style="width:100%">
+        </div>
+        <div style="flex:1">
+          <select id="orgStatusFilter">
+            <option value="ALL">All Statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="SUSPENDED">Suspended / Disabled</option>
+          </select>
+        </div>
+        <div>
+          <button id="orgRefreshBtn" class="btn small ghost">Refresh</button>
+        </div>
+      </div>
+
+      <!-- Organizations Table -->
+      <table class="data" id="orgsTable">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Organization</th>
+            <th>Slug</th>
+            <th>Official Email</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="orgsBody"></tbody>
+      </table>
+
+      <!-- Pagination Controls for Organizations -->
+      <div id="orgPaginationBar" style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:13px;color:var(--muted)">
+        <span id="orgPaginationInfo">Showing 0 of 0 organizations</span>
+        <div style="display:flex;gap:8px">
+          <button id="orgPrevBtn" class="btn small ghost" disabled>&larr; Prev</button>
+          <button id="orgNextBtn" class="btn small ghost" disabled>Next &rarr;</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Branding & Organization Profile Tab (ORG_ADMIN) -->
+    <div class="tabpane card" id="pane-branding" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+        <div>
+          <h2 style="margin:0">Organization Profile & Branding</h2>
+          <span style="font-size:13px;color:var(--muted)">Customize your institution identity, brand colors, certificate styling, and team members.</span>
+        </div>
+        <button id="saveOrgBrandingBtn" class="btn">Save Changes</button>
+      </div>
+
+      <div id="brandingMsg" class="okmsg" style="display:none;margin-bottom:12px"></div>
+      <div id="brandingErr" class="err" style="display:none;margin-bottom:12px"></div>
+
+      <!-- Usage Summary Cards -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:24px">
+        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
+          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Registered Candidates</div>
+          <div id="usageCandidates" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
+        </div>
+        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
+          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Active Exams</div>
+          <div id="usageExams" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
+        </div>
+        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
+          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Total Attempts</div>
+          <div id="usageAttempts" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
+        </div>
+        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
+          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Certificates Issued</div>
+          <div id="usageCertificates" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
+        </div>
+      </div>
+
+      <!-- Profile & Basic Info -->
+      <h3 style="margin-top:0;border-bottom:1px solid var(--line);padding-bottom:8px">1. Organization Details</h3>
+      <div class="row">
+        <div><label>Organization Name</label><input id="b_name" placeholder="Institution Name"></div>
+        <div><label>Official Email</label><input id="b_email" type="email" placeholder="contact@university.edu"></div>
+      </div>
+      <div class="row">
+        <div><label>Contact Phone</label><input id="b_phone" placeholder="+91 9876543210"></div>
+        <div><label>Website</label><input id="b_website" placeholder="https://university.edu"></div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Timezone (for reports & test schedules)</label>
+          <select id="b_timezone">
+            <option value="Asia/Kolkata">Asia/Kolkata (IST +5:30)</option>
+            <option value="Asia/Dubai">Asia/Dubai (GST +4:00)</option>
+            <option value="Europe/London">Europe/London (GMT/BST)</option>
+            <option value="America/New_York">America/New_York (EST/EDT)</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Brand Palette & Logo -->
+      <h3 style="margin-top:24px;border-bottom:1px solid var(--line);padding-bottom:8px">2. Brand Colors & Logo</h3>
+      <div class="row">
+        <div>
+          <label>Organization Logo (PNG/JPEG/WebP, max 2MB)</label>
+          <div style="display:flex;gap:12px;align-items:center">
+            <img id="b_logo_preview" src="" style="width:60px;height:60px;object-fit:contain;border:1px solid var(--line);border-radius:4px;display:none;background:#fff">
+            <input id="b_logo_file" type="file" accept="image/png,image/jpeg,image/webp">
+            <button id="uploadLogoBtn" class="btn small ghost">Upload Logo</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label>Primary Brand Color</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="b_primary_color_picker" type="color" value="#0B1F3A" style="width:40px;height:38px;padding:2px;border:none">
+            <input id="b_primary_color" value="#0B1F3A" style="flex:1" placeholder="#0B1F3A">
+          </div>
+        </div>
+        <div>
+          <label>Secondary Color</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="b_secondary_color_picker" type="color" value="#13294B" style="width:40px;height:38px;padding:2px;border:none">
+            <input id="b_secondary_color" value="#13294B" style="flex:1" placeholder="#13294B">
+          </div>
+        </div>
+        <div>
+          <label>Accent Brand Color</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="b_accent_color_picker" type="color" value="#F97316" style="width:40px;height:38px;padding:2px;border:none">
+            <input id="b_accent_color" value="#F97316" style="flex:1" placeholder="#F97316">
+          </div>
+        </div>
+      </div>
+
+      <!-- Certificate Branding -->
+      <h3 style="margin-top:24px;border-bottom:1px solid var(--line);padding-bottom:8px">3. Certificate Customization</h3>
+      <div class="row">
+        <div><label>Certificate Title</label><input id="b_cert_title" placeholder="Certificate of Achievement"></div>
+        <div><label>Certificate Organization Header</label><input id="b_cert_org_name" placeholder="Leave blank to use Organization Name"></div>
+      </div>
+      <div class="row">
+        <div><label>Authorized Signatory Name</label><input id="b_cert_signatory" placeholder="e.g. Dr. A. Sharma"></div>
+        <div><label>Signatory Title</label><input id="b_cert_signatory_title" placeholder="e.g. Dean of Examinations"></div>
+      </div>
+      <div class="row">
+        <div><label>Footer Accreditation / Subtext</label><input id="b_cert_footer" placeholder="Recognised by Board of Technical Education"></div>
+      </div>
+
+      <!-- Team Invitations Section -->
+      <h3 style="margin-top:28px;border-bottom:1px solid var(--line);padding-bottom:8px">4. Team & Administrator Invitations</h3>
+      <div class="row" style="align-items:center">
+        <div style="flex:2"><input id="b_invite_email" placeholder="colleague@institution.edu" type="email"></div>
+        <div style="flex:1">
+          <select id="b_invite_role">
+            <option value="ORG_ADMIN">Organization Admin</option>
+            <option value="EXAM_MANAGER">Exam Manager</option>
+            <option value="EVALUATOR">Evaluator</option>
+            <option value="VIEWER">Viewer</option>
+          </select>
+        </div>
+        <div><button id="sendInviteBtn" class="btn small">+ Send Invitation</button></div>
+      </div>
+      <div id="inviteMsg" class="okmsg" style="display:none;margin-top:8px"></div>
+      <div id="inviteErr" class="err" style="display:none;margin-top:8px"></div>
+
+      <table class="data" style="margin-top:16px">
+        <thead>
+          <tr>
+            <th>Invitee Email</th>
+            <th>Role</th>
+            <th>Expires</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="b_invitations_body"></tbody>
+      </table>
+    </div>
+
+    <!-- Create Organization Modal (SUPER_ADMIN) -->
+    <div id="createOrgModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;padding:24px">
+      <div class="card" style="max-width:600px;margin:30px auto;background:#fff;padding:24px;border-radius:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
+          <h2 style="margin:0">Create New Organization</h2>
+          <button id="closeCreateOrgModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+        </div>
+        <div id="createOrgErr" class="err" style="display:none;margin-bottom:12px"></div>
+        <label>Organization Name *</label><input id="m_org_name" placeholder="e.g. Delhi Technical University">
+        <div class="row">
+          <div><label>Slug (URL key)</label><input id="m_org_slug" placeholder="e.g. dtu-delhi"></div>
+          <div><label>Official Email</label><input id="m_org_email" placeholder="contact@dtu.ac.in" type="email"></div>
+        </div>
+        <div class="row">
+          <div><label>Contact Phone</label><input id="m_org_phone" placeholder="+91 9811002233"></div>
+          <div><label>Website</label><input id="m_org_website" placeholder="https://dtu.ac.in"></div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Timezone</label>
+            <select id="m_org_timezone">
+              <option value="Asia/Kolkata">Asia/Kolkata</option>
+              <option value="Asia/Dubai">Asia/Dubai</option>
+              <option value="Europe/London">Europe/London</option>
+              <option value="America/New_York">America/New_York</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+          <div>
+            <label>Initial Status</label>
+            <select id="m_org_status">
+              <option value="ACTIVE">Active</option>
+              <option value="SUSPENDED">Suspended</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px">
+          <button id="cancelCreateOrgBtn" class="btn ghost">Cancel</button>
+          <button id="submitCreateOrgBtn" class="btn">Create Organization</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Organization Details & Usage Modal (SUPER_ADMIN) -->
+    <div id="orgDetailsModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;padding:24px">
+      <div class="card" style="max-width:680px;margin:30px auto;background:#fff;padding:24px;border-radius:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
+          <div>
+            <h2 id="od_title" style="margin:0">Organization Details</h2>
+            <span id="od_subtitle" style="font-size:13px;color:var(--muted)"></span>
+          </div>
+          <button id="closeOrgDetailsModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+        </div>
+        <div id="od_usage_grid" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:20px"></div>
+        <div id="od_details_content" style="font-size:14px;color:var(--ink)"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;border-top:1px solid var(--line);padding-top:14px">
+          <button id="od_toggle_status_btn" class="btn small ghost"></button>
+          <button id="closeOrgDetailsBottomBtn" class="btn small">Close</button>
+        </div>
+      </div>
     </div>
 
     <!-- Exam Builder Modal / Guided Workflow -->

@@ -73,14 +73,15 @@ function tenantContextMiddleware(req, res, next) {
       return next(new AuthorizationError('Assigned organization does not exist.'));
     }
 
-    if (org.status === 'SUSPENDED') {
+    if (org.status === 'SUSPENDED' || org.status === 'DISABLED') {
       recordAuditEvent({
         req,
         event: 'suspended_organization_access_attempt',
         userId: req.user.id,
-        organizationId: resolvedOrgId
+        organizationId: resolvedOrgId,
+        details: { status: org.status }
       });
-      return next(new AuthorizationError('Organization account is suspended. Please contact platform support.'));
+      return next(new AuthorizationError(`Organization account is ${org.status.toLowerCase()}. Please contact platform support.`));
     }
   }
 

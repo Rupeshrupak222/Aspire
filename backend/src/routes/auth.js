@@ -4,12 +4,15 @@ const validate = require('../middleware/validate');
 const { requireAuth } = require('../middleware/admin-auth');
 const { loginSchema } = require('../validation/auth.schemas');
 const { authLoginLimiter } = require('../security/rate-limit');
-const { AuthenticationError } = require('../errors/app-error');
+const { AuthenticationError, AuthorizationError } = require('../errors/app-error');
 const { findUserByEmail, recordLogin, sanitizeUser } = require('../services/user.service');
+const { findOrganizationById } = require('../services/organization.service');
 const { verifyPassword, signAccessToken } = require('../security/jwt');
 const { createSession, deleteSession } = require('../services/session.service');
 const { recordAuditEvent } = require('../services/audit.service');
 const { getRolePermissions } = require('../security/rbac');
+const invitationService = require('../services/invitation.service');
+const { acceptInvitationSchema } = require('../validation/organization.schemas');
 
 const router = express.Router();
 
@@ -46,6 +49,20 @@ router.post('/login', authLoginLimiter, validate(loginSchema), async (req, res, 
         ipAddress: ip
       });
       return next(new AuthenticationError('This account is disabled. Please contact your administrator.'));
+    }
+
+    if (user.organization_id) {
+      const org = findOrganizationById(user.organization_id);
+      if (org && (org.status === 'SUSPENDED' || org.status === 'DISABLED')) {
+        recordAuditEvent({
+          req,
+          event: 'login_suspended_organization',
+          userId: user.id,
+          organizationId: user.organization_id,
+          ipAddress: ip
+        });
+        return next(new AuthorizationError('Your organization account is currently suspended or disabled. Please contact support.', 'ORGANIZATION_INACTIVE'));
+      }
     }
 
     // Determine session expiration (e.g. 2 hours from now)
@@ -126,6 +143,68 @@ router.get('/me', requireAuth, (req, res) => {
       user: req.user
     }
   });
+});
+
+// 4. Inspect invitation details (Public)
+router.get('/invitations/:token', (req, res, next) => {
+  try {
+    const invite = invitationService.getInvitationByToken(req.params.token);
+    res.json({
+      success: true,
+      data: invite
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 5. Accept invitation and create account (Public)
+router.post('/invitations/accept', validate({ body: acceptInvitationSchema }), async (req, res, next) => {
+  try {
+    const result = await invitationService.acceptInvitation({
+      rawToken: req.body.token,
+      name: req.body.name,
+      password: req.body.password
+    });
+
+    const ip = req.ip || req.connection?.remoteAddress;
+    const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const sessionId = createSession({
+      userId: result.user.id,
+      ipAddress: ip,
+      userAgent: req.headers['user-agent'] || null,
+      expiresAt
+    });
+
+    const token = await signAccessToken({
+      sub: String(result.user.id),
+      role: result.user.role,
+      organization_id: result.user.organization_id || null,
+      token_version: result.user.token_version,
+      jti: sessionId
+    });
+
+    recordLogin(result.user.id);
+
+    recordAuditEvent({
+      req,
+      event: 'invitation_accepted',
+      userId: result.user.id,
+      organizationId: result.organizationId,
+      details: { email: result.user.email, role: result.user.role }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        ...result,
+        token
+      },
+      message: 'Invitation accepted and account created successfully.'
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

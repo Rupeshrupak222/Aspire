@@ -98,6 +98,16 @@ function applyRoleAwareUI() {
   document.getElementById('tab-report').style.display = canAnalytics ? 'inline-block' : 'none';
   document.getElementById('tab-users').style.display = canUsers ? 'inline-block' : 'none';
 
+  // Organizations tab (Platform SUPER_ADMIN only)
+  const orgsTab = document.getElementById('tab-organizations');
+  if (orgsTab) orgsTab.style.display = role === 'SUPER_ADMIN' ? 'inline-block' : 'none';
+
+  // Branding & Profile tab (Organization Admin or tenant member)
+  const brandingTab = document.getElementById('tab-branding');
+  if (brandingTab) {
+    brandingTab.style.display = (role === 'ORG_ADMIN' || (currentUser && currentUser.organization_id)) ? 'inline-block' : 'none';
+  }
+
   // Question bank mutation controls
   const addQBtn = document.getElementById('addQBtn');
   if (addQBtn) addQBtn.style.display = permissions.includes('questions.create') ? 'inline-block' : 'none';
@@ -123,6 +133,8 @@ function applyRoleAwareUI() {
   else if (canAnalytics) switchTab('report');
   else if (canConfig) switchTab('config');
   else if (canUsers) switchTab('users');
+  else if (role === 'SUPER_ADMIN') switchTab('organizations');
+  else if (brandingTab && brandingTab.style.display !== 'none') switchTab('branding');
 }
 
 function gate() {
@@ -196,6 +208,8 @@ function switchTab(name) {
   if (name === 'config') loadConfig();
   if (name === 'results') loadResults();
   if (name === 'users') loadUsers();
+  if (name === 'organizations') loadOrganizations();
+  if (name === 'branding') loadOrgBranding();
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
@@ -1716,6 +1730,584 @@ document.getElementById('closeExamPreviewBtn')?.addEventListener('click', () => 
 document.getElementById('builderPreviewExamBtn')?.addEventListener('click', () => {
   if (currentEditingExamId) openExamPreview(currentEditingExamId);
 });
+
+// ---------------------------------------------------------------------------
+// Day 17: Organization Management (SUPER_ADMIN)
+// ---------------------------------------------------------------------------
+let currentOrgPage = 1;
+const orgLimit = 10;
+let currentOrgSearch = '';
+let currentOrgStatus = 'ALL';
+
+async function loadOrganizations(page = 1, search = currentOrgSearch, status = currentOrgStatus) {
+  if (currentUser?.role !== 'SUPER_ADMIN') return;
+  currentOrgPage = page;
+  currentOrgSearch = search;
+  currentOrgStatus = status;
+
+  try {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(orgLimit)
+    });
+    if (search) params.append('search', search);
+    if (status && status !== 'ALL') params.append('status', status);
+
+    const res = await aapi(`/api/admin/organizations?${params.toString()}`);
+    const orgs = res.data || [];
+    const pagination = res.pagination || { total: orgs.length, page: 1, limit: orgLimit, totalPages: 1 };
+
+    const tb = document.getElementById('orgsBody');
+    if (!tb) return;
+
+    if (orgs.length === 0) {
+      tb.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No organizations found.</td></tr>`;
+    } else {
+      tb.innerHTML = orgs.map((org) => {
+        const isSuspended = org.status === 'SUSPENDED';
+        const statusBadge = isSuspended
+          ? `<span class="tag" style="background:#FEE2E2;color:#991B1B">SUSPENDED</span>`
+          : `<span class="tag" style="background:#DEF7EC;color:#03543F">ACTIVE</span>`;
+
+        return `<tr>
+          <td>${org.id}</td>
+          <td>
+            <strong>${esc(org.name)}</strong>
+            ${org.email ? `<div style="font-size:12px;color:var(--muted)">${esc(org.email)}</div>` : ''}
+          </td>
+          <td><code>${esc(org.slug)}</code></td>
+          <td>${esc(org.email || '-')}</td>
+          <td>${statusBadge}</td>
+          <td>${esc((org.created_at || '').slice(0, 10))}</td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button class="btn small ghost" onclick="showOrgDetails(${org.id})">Details</button>
+              <button class="btn small ${isSuspended ? '' : 'ghost'}" onclick="toggleOrgStatus(${org.id}, '${org.status}')">
+                ${isSuspended ? 'Enable' : 'Disable'}
+              </button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Update pagination controls
+    const info = document.getElementById('orgPaginationInfo');
+    if (info) {
+      const from = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
+      const to = Math.min(pagination.page * pagination.limit, pagination.total);
+      info.textContent = `Showing ${from}–${to} of ${pagination.total} organizations (Page ${pagination.page} of ${pagination.totalPages || 1})`;
+    }
+
+    const prevBtn = document.getElementById('orgPrevBtn');
+    if (prevBtn) prevBtn.disabled = pagination.page <= 1;
+
+    const nextBtn = document.getElementById('orgNextBtn');
+    if (nextBtn) nextBtn.disabled = pagination.page >= (pagination.totalPages || 1);
+
+  } catch (err) {
+    const tb = document.getElementById('orgsBody');
+    if (tb) tb.innerHTML = `<tr><td colspan="7" class="err" style="text-align:center">${esc(err.message)}</td></tr>`;
+  }
+}
+
+// Search & filter event bindings
+document.getElementById('orgSearchInput')?.addEventListener('input', (e) => {
+  const val = e.target.value.trim();
+  loadOrganizations(1, val, currentOrgStatus);
+});
+
+document.getElementById('orgStatusFilter')?.addEventListener('change', (e) => {
+  loadOrganizations(1, currentOrgSearch, e.target.value);
+});
+
+document.getElementById('orgRefreshBtn')?.addEventListener('click', () => {
+  loadOrganizations(currentOrgPage, currentOrgSearch, currentOrgStatus);
+});
+
+document.getElementById('orgPrevBtn')?.addEventListener('click', () => {
+  if (currentOrgPage > 1) loadOrganizations(currentOrgPage - 1, currentOrgSearch, currentOrgStatus);
+});
+
+document.getElementById('orgNextBtn')?.addEventListener('click', () => {
+  loadOrganizations(currentOrgPage + 1, currentOrgSearch, currentOrgStatus);
+});
+
+// Create Organization Modal bindings
+const createOrgModal = document.getElementById('createOrgModal');
+document.getElementById('createOrgBtn')?.addEventListener('click', () => {
+  if (createOrgModal) {
+    document.getElementById('m_org_name').value = '';
+    document.getElementById('m_org_slug').value = '';
+    document.getElementById('m_org_email').value = '';
+    document.getElementById('m_org_phone').value = '';
+    document.getElementById('m_org_website').value = '';
+    document.getElementById('m_org_timezone').value = 'Asia/Kolkata';
+    document.getElementById('m_org_status').value = 'ACTIVE';
+    const errBox = document.getElementById('createOrgErr');
+    if (errBox) errBox.style.display = 'none';
+    createOrgModal.style.display = 'block';
+  }
+});
+
+document.getElementById('closeCreateOrgModalBtn')?.addEventListener('click', () => {
+  if (createOrgModal) createOrgModal.style.display = 'none';
+});
+
+document.getElementById('cancelCreateOrgBtn')?.addEventListener('click', () => {
+  if (createOrgModal) createOrgModal.style.display = 'none';
+});
+
+document.getElementById('submitCreateOrgBtn')?.addEventListener('click', async () => {
+  const name = document.getElementById('m_org_name').value.trim();
+  const slug = document.getElementById('m_org_slug').value.trim();
+  const email = document.getElementById('m_org_email').value.trim();
+  const phone = document.getElementById('m_org_phone').value.trim();
+  const website = document.getElementById('m_org_website').value.trim();
+  const timezone = document.getElementById('m_org_timezone').value;
+  const status = document.getElementById('m_org_status').value;
+  const errBox = document.getElementById('createOrgErr');
+
+  if (errBox) errBox.style.display = 'none';
+  if (!name) {
+    if (errBox) { errBox.textContent = 'Organization name is required.'; errBox.style.display = 'block'; }
+    return;
+  }
+
+  try {
+    const payload = { name };
+    if (slug) payload.slug = slug;
+    if (email) payload.email = email;
+    if (phone) payload.phone = phone;
+    if (website) payload.website = website;
+    if (timezone) payload.timezone = timezone;
+    if (status) payload.status = status;
+
+    await aapi('/api/admin/organizations', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (createOrgModal) createOrgModal.style.display = 'none';
+    loadOrganizations(1, currentOrgSearch, currentOrgStatus);
+  } catch (err) {
+    if (errBox) {
+      errBox.textContent = err.message;
+      errBox.style.display = 'block';
+    }
+  }
+});
+
+// Toggle Status (Enable / Disable)
+window.toggleOrgStatus = async function(id, currentStatus) {
+  const isSuspended = currentStatus === 'SUSPENDED';
+  const actionWord = isSuspended ? 'enable' : 'disable';
+
+  if (!confirm(`Are you sure you want to ${actionWord} organization #${id}?`)) return;
+
+  try {
+    if (isSuspended) {
+      await aapi(`/api/admin/organizations/${id}/enable`, { method: 'POST' });
+    } else {
+      const reason = prompt('Please provide a reason for disabling this organization:', 'Administrative suspension') || 'Administrative suspension';
+      await aapi(`/api/admin/organizations/${id}/disable`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      });
+    }
+    loadOrganizations(currentOrgPage, currentOrgSearch, currentOrgStatus);
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+// Organization Details Modal
+window.showOrgDetails = async function(id) {
+  const modal = document.getElementById('orgDetailsModal');
+  if (!modal) return;
+
+  try {
+    const [orgRes, usageRes] = await Promise.all([
+      aapi(`/api/admin/organizations/${id}`),
+      aapi(`/api/admin/organizations/${id}/usage`).catch(() => ({ data: {} }))
+    ]);
+
+    const org = orgRes.data || orgRes;
+    const usage = usageRes.data || {};
+
+    document.getElementById('od_title').textContent = org.name;
+    document.getElementById('od_subtitle').textContent = `Slug: ${org.slug} | Timezone: ${org.timezone || 'Asia/Kolkata'} | Status: ${org.status}`;
+
+    // Usage cards
+    const usageGrid = document.getElementById('od_usage_grid');
+    if (usageGrid) {
+      usageGrid.innerHTML = `
+        <div style="padding:12px;background:var(--cream);border-radius:6px;border:1px solid var(--line);text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">Candidates</div>
+          <div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:4px">${usage.candidatesCount || 0}</div>
+        </div>
+        <div style="padding:12px;background:var(--cream);border-radius:6px;border:1px solid var(--line);text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">Exams</div>
+          <div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:4px">${usage.examsCount || 0}</div>
+        </div>
+        <div style="padding:12px;background:var(--cream);border-radius:6px;border:1px solid var(--line);text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">Attempts</div>
+          <div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:4px">${usage.attemptsCount || 0}</div>
+        </div>
+        <div style="padding:12px;background:var(--cream);border-radius:6px;border:1px solid var(--line);text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">Certificates</div>
+          <div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:4px">${usage.certificatesCount || 0}</div>
+        </div>
+        <div style="padding:12px;background:var(--cream);border-radius:6px;border:1px solid var(--line);text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">Questions</div>
+          <div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:4px">${usage.questionsCount || 0}</div>
+        </div>
+        <div style="padding:12px;background:var(--cream);border-radius:6px;border:1px solid var(--line);text-align:center">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">Admin Users</div>
+          <div style="font-size:22px;font-weight:700;color:var(--navy);margin-top:4px">${usage.usersCount || 0}</div>
+        </div>
+      `;
+    }
+
+    // Profile Details Content
+    const content = document.getElementById('od_details_content');
+    if (content) {
+      content.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+          <div><strong>Official Email:</strong> ${esc(org.email || 'Not configured')}</div>
+          <div><strong>Phone:</strong> ${esc(org.phone || 'Not configured')}</div>
+          <div><strong>Website:</strong> ${org.website ? `<a href="${esc(org.website)}" target="_blank">${esc(org.website)}</a>` : 'Not configured'}</div>
+          <div><strong>Branding Colors:</strong> 
+            <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${org.primary_color || '#0B1F3A'};vertical-align:middle;margin:0 2px 0 6px"></span> ${org.primary_color || '#0B1F3A'}
+            <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${org.secondary_color || '#13294B'};vertical-align:middle;margin:0 2px 0 6px"></span> ${org.secondary_color || '#13294B'}
+            <span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${org.accent_color || '#F97316'};vertical-align:middle;margin:0 2px 0 6px"></span> ${org.accent_color || '#F97316'}
+          </div>
+          <div><strong>Logo:</strong> ${org.logo_url ? `<img src="${esc(org.logo_url)}" style="height:32px;vertical-align:middle;margin-left:8px;border:1px solid var(--line);border-radius:3px">` : 'Default Aspire logo'}</div>
+          <div><strong>Created At:</strong> ${esc(org.created_at || '-')}</div>
+        </div>
+      `;
+    }
+
+    const toggleBtn = document.getElementById('od_toggle_status_btn');
+    if (toggleBtn) {
+      const isSuspended = org.status === 'SUSPENDED';
+      toggleBtn.textContent = isSuspended ? 'Enable Organization' : 'Disable Organization';
+      toggleBtn.className = `btn small ${isSuspended ? '' : 'ghost'}`;
+      toggleBtn.onclick = async () => {
+        await toggleOrgStatus(org.id, org.status);
+        modal.style.display = 'none';
+      };
+    }
+
+    modal.style.display = 'block';
+  } catch (err) {
+    alert(err.message);
+  }
+};
+
+document.getElementById('closeOrgDetailsModalBtn')?.addEventListener('click', () => {
+  const modal = document.getElementById('orgDetailsModal');
+  if (modal) modal.style.display = 'none';
+});
+document.getElementById('closeOrgDetailsBottomBtn')?.addEventListener('click', () => {
+  const modal = document.getElementById('orgDetailsModal');
+  if (modal) modal.style.display = 'none';
+});
+
+// ---------------------------------------------------------------------------
+// Day 17: Organization Profile & Branding (ORG_ADMIN)
+// ---------------------------------------------------------------------------
+
+// Color Pickers <-> Inputs Two-Way Sync
+function syncColorPicker(pickerId, inputId) {
+  const picker = document.getElementById(pickerId);
+  const input = document.getElementById(inputId);
+  if (!picker || !input) return;
+
+  picker.addEventListener('input', () => {
+    input.value = picker.value.toUpperCase();
+  });
+  input.addEventListener('change', () => {
+    if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(input.value)) {
+      picker.value = input.value;
+    }
+  });
+}
+syncColorPicker('b_primary_color_picker', 'b_primary_color');
+syncColorPicker('b_secondary_color_picker', 'b_secondary_color');
+syncColorPicker('b_accent_color_picker', 'b_accent_color');
+
+async function loadOrgBranding() {
+  try {
+    const res = await aapi('/api/organization');
+    const org = res.data || res;
+
+    // Fill profile fields
+    const nameEl = document.getElementById('b_name');
+    if (nameEl) nameEl.value = org.name || '';
+    const emailEl = document.getElementById('b_email');
+    if (emailEl) emailEl.value = org.email || '';
+    const phoneEl = document.getElementById('b_phone');
+    if (phoneEl) phoneEl.value = org.phone || '';
+    const websiteEl = document.getElementById('b_website');
+    if (websiteEl) websiteEl.value = org.website || '';
+    const tzEl = document.getElementById('b_timezone');
+    if (tzEl) tzEl.value = org.timezone || 'Asia/Kolkata';
+
+    // Brand colors
+    const pri = org.primary_color || '#0B1F3A';
+    const sec = org.secondary_color || '#13294B';
+    const acc = org.accent_color || '#F97316';
+
+    const priIn = document.getElementById('b_primary_color');
+    const priPk = document.getElementById('b_primary_color_picker');
+    if (priIn && priPk) { priIn.value = pri; priPk.value = pri; }
+
+    const secIn = document.getElementById('b_secondary_color');
+    const secPk = document.getElementById('b_secondary_color_picker');
+    if (secIn && secPk) { secIn.value = sec; secPk.value = sec; }
+
+    const accIn = document.getElementById('b_accent_color');
+    const accPk = document.getElementById('b_accent_color_picker');
+    if (accIn && accPk) { accIn.value = acc; accPk.value = acc; }
+
+    // Logo preview
+    const preview = document.getElementById('b_logo_preview');
+    if (preview) {
+      if (org.logo_url) {
+        preview.src = org.logo_url;
+        preview.style.display = 'block';
+      } else {
+        preview.style.display = 'none';
+      }
+    }
+
+    // Certificate branding
+    const cert = org.certificate_branding || {};
+    const cTitle = document.getElementById('b_cert_title');
+    if (cTitle) cTitle.value = cert.title || '';
+    const cOrgName = document.getElementById('b_cert_org_name');
+    if (cOrgName) cOrgName.value = cert.org_name || '';
+    const cSignatory = document.getElementById('b_cert_signatory');
+    if (cSignatory) cSignatory.value = cert.signatory_name || '';
+    const cSigTitle = document.getElementById('b_cert_signatory_title');
+    if (cSigTitle) cSigTitle.value = cert.signatory_title || '';
+    const cFooter = document.getElementById('b_cert_footer');
+    if (cFooter) cFooter.value = cert.footer_text || '';
+
+    // Load usage stats
+    loadOrgUsageStats();
+
+    // Load team invitations
+    loadOrgInvitations();
+
+  } catch (err) {
+    const errBox = document.getElementById('brandingErr');
+    if (errBox) {
+      errBox.textContent = `Failed to load organization settings: ${err.message}`;
+      errBox.style.display = 'block';
+    }
+  }
+}
+
+async function loadOrgUsageStats() {
+  try {
+    const res = await aapi('/api/organization/usage');
+    const u = res.data || {};
+    const cCand = document.getElementById('usageCandidates');
+    if (cCand) cCand.textContent = u.candidatesCount ?? 0;
+    const cExams = document.getElementById('usageExams');
+    if (cExams) cExams.textContent = u.examsCount ?? 0;
+    const cAttempts = document.getElementById('usageAttempts');
+    if (cAttempts) cAttempts.textContent = u.attemptsCount ?? 0;
+    const cCerts = document.getElementById('usageCertificates');
+    if (cCerts) cCerts.textContent = u.certificatesCount ?? 0;
+  } catch {}
+}
+
+// Save Changes to Organization Profile & Branding
+document.getElementById('saveOrgBrandingBtn')?.addEventListener('click', async () => {
+  const msgBox = document.getElementById('brandingMsg');
+  const errBox = document.getElementById('brandingErr');
+  if (msgBox) msgBox.style.display = 'none';
+  if (errBox) errBox.style.display = 'none';
+
+  try {
+    const payload = {
+      name: document.getElementById('b_name')?.value.trim(),
+      phone: document.getElementById('b_phone')?.value.trim() || null,
+      website: document.getElementById('b_website')?.value.trim() || null,
+      timezone: document.getElementById('b_timezone')?.value || 'Asia/Kolkata',
+      primary_color: document.getElementById('b_primary_color')?.value.trim() || '#0B1F3A',
+      secondary_color: document.getElementById('b_secondary_color')?.value.trim() || '#13294B',
+      accent_color: document.getElementById('b_accent_color')?.value.trim() || '#F97316',
+      certificate_branding: {
+        title: document.getElementById('b_cert_title')?.value.trim() || undefined,
+        org_name: document.getElementById('b_cert_org_name')?.value.trim() || undefined,
+        signatory_name: document.getElementById('b_cert_signatory')?.value.trim() || undefined,
+        signatory_title: document.getElementById('b_cert_signatory_title')?.value.trim() || undefined,
+        footer_text: document.getElementById('b_cert_footer')?.value.trim() || undefined
+      }
+    };
+
+    const res = await aapi('/api/organization', {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    });
+
+    if (msgBox) {
+      msgBox.textContent = 'Organization profile and branding updated successfully.';
+      msgBox.style.display = 'block';
+    }
+  } catch (err) {
+    if (errBox) {
+      errBox.textContent = err.message;
+      errBox.style.display = 'block';
+    }
+  }
+});
+
+// Upload Logo
+document.getElementById('uploadLogoBtn')?.addEventListener('click', async () => {
+  const fileInput = document.getElementById('b_logo_file');
+  const file = fileInput?.files?.[0];
+  const errBox = document.getElementById('brandingErr');
+  const msgBox = document.getElementById('brandingMsg');
+  if (errBox) errBox.style.display = 'none';
+  if (msgBox) msgBox.style.display = 'none';
+
+  if (!file) {
+    if (errBox) { errBox.textContent = 'Please choose an image file first (PNG, JPEG, or WebP).'; errBox.style.display = 'block'; }
+    return;
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    if (errBox) { errBox.textContent = 'Logo image exceeds 2MB limit.'; errBox.style.display = 'block'; }
+    return;
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('logo', file);
+
+    const token = getAuthToken();
+    const res = await fetch('/api/organization/branding/logo', {
+      method: 'POST',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: formData
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.message || data.error || 'Failed to upload logo');
+    }
+
+    const preview = document.getElementById('b_logo_preview');
+    if (preview && data.data?.logo_url) {
+      preview.src = data.data.logo_url;
+      preview.style.display = 'block';
+    }
+
+    if (msgBox) {
+      msgBox.textContent = 'Logo uploaded and updated successfully.';
+      msgBox.style.display = 'block';
+    }
+  } catch (err) {
+    if (errBox) {
+      errBox.textContent = err.message;
+      errBox.style.display = 'block';
+    }
+  }
+});
+
+// Team Invitations
+async function loadOrgInvitations() {
+  const tb = document.getElementById('b_invitations_body');
+  if (!tb) return;
+
+  try {
+    const res = await aapi('/api/organization/invitations');
+    const invites = res.data || [];
+
+    if (invites.length === 0) {
+      tb.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:14px">No pending or recent invitations.</td></tr>`;
+      return;
+    }
+
+    tb.innerHTML = invites.map((inv) => {
+      const isPending = inv.status === 'PENDING';
+      const statusBadge = isPending
+        ? `<span class="tag" style="background:#FEF3C7;color:#92400E">PENDING</span>`
+        : (inv.status === 'ACCEPTED'
+          ? `<span class="tag" style="background:#DEF7EC;color:#03543F">ACCEPTED</span>`
+          : `<span class="tag" style="background:#F3F4F6;color:#6B7280">${esc(inv.status)}</span>`);
+
+      const revokeBtn = isPending
+        ? `<button class="btn small ghost" onclick="revokeOrgInvite(${inv.id})">Revoke</button>`
+        : '-';
+
+      return `<tr>
+        <td><strong>${esc(inv.email)}</strong></td>
+        <td><span class="tag">${esc(inv.role)}</span></td>
+        <td>${esc((inv.expires_at || '').slice(0, 16))}</td>
+        <td>${statusBadge}</td>
+        <td>${revokeBtn}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) {
+    tb.innerHTML = `<tr><td colspan="5" class="err" style="text-align:center">${esc(err.message)}</td></tr>`;
+  }
+}
+
+document.getElementById('sendInviteBtn')?.addEventListener('click', async () => {
+  const emailInput = document.getElementById('b_invite_email');
+  const roleSelect = document.getElementById('b_invite_role');
+  const email = emailInput?.value.trim();
+  const role = roleSelect?.value || 'ORG_ADMIN';
+
+  const msgBox = document.getElementById('inviteMsg');
+  const errBox = document.getElementById('inviteErr');
+  if (msgBox) msgBox.style.display = 'none';
+  if (errBox) errBox.style.display = 'none';
+
+  if (!email) {
+    if (errBox) { errBox.textContent = 'Please enter invitee email.'; errBox.style.display = 'block'; }
+    return;
+  }
+
+  try {
+    const res = await aapi('/api/organization/invitations', {
+      method: 'POST',
+      body: JSON.stringify({ email, role })
+    });
+
+    if (emailInput) emailInput.value = '';
+
+    if (msgBox) {
+      msgBox.textContent = `Invitation created for ${email}. (Link: ${res.data?.invitationLink || 'Sent'})`;
+      msgBox.style.display = 'block';
+    }
+
+    loadOrgInvitations();
+  } catch (err) {
+    if (errBox) {
+      errBox.textContent = err.message;
+      errBox.style.display = 'block';
+    }
+  }
+});
+
+window.revokeOrgInvite = async function(id) {
+  if (!confirm('Are you sure you want to revoke this invitation?')) return;
+  try {
+    await aapi(`/api/organization/invitations/${id}/revoke`, { method: 'POST' });
+    loadOrgInvitations();
+  } catch (err) {
+    alert(err.message);
+  }
+};
 
 // Initial boot
 gate();

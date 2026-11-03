@@ -10,6 +10,8 @@ const { publicApiLimiter } = require('./security/rate-limit');
 const publicRoutes = require('./routes/public');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const organizationRoutes = require('./routes/organization');
+const { storageService } = require('./services/storage.service');
 const { executionService } = require('./services/code-execution/execution.service');
 
 function createApp() {
@@ -76,8 +78,26 @@ function createApp() {
   app.get('/api/health', healthHandler);
   app.get('/api/health/db', healthHandler);
   app.use('/api/auth', authRoutes);
-  app.use('/api', publicRoutes);
+  app.use('/api/organization', organizationRoutes);
   app.use('/api/admin', adminRoutes);
+
+  // Storage asset serving endpoint for local/mock uploads
+  app.get('/api/storage/assets/*', async (req, res, next) => {
+    try {
+      const assetKey = req.params[0];
+      const asset = await storageService.getAssetBuffer(assetKey);
+      if (!asset) {
+        return next(new NotFoundError('Asset not found'));
+      }
+      res.setHeader('Content-Type', asset.mimeType || 'application/octet-stream');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(asset.buffer);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  app.use('/api', publicRoutes);
 
   // 9. Fallback for unknown API routes
   app.use('/api', (req, res, next) => next(new NotFoundError('Not found')));

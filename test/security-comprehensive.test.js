@@ -213,9 +213,9 @@ async function runSecurityTests() {
 
   } finally {
     db.close();
-    try { fs.unlinkSync(DB_PATH); } catch {}
-    try { fs.unlinkSync(DB_PATH + '-wal'); } catch {}
-    try { fs.unlinkSync(DB_PATH + '-shm'); } catch {}
+    try { fs.unlinkSync(DB_PATH); } catch { }
+    try { fs.unlinkSync(DB_PATH + '-wal'); } catch { }
+    try { fs.unlinkSync(DB_PATH + '-shm'); } catch { }
   }
 
   console.log('\n====================================================');
