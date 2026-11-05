@@ -87,6 +87,11 @@ function applyRoleAwareUI() {
   const canUsers = permissions.includes('users.read');
   const canExport = permissions.includes('results.export');
 
+  // SaaS Analytics Dashboard tab (Day 18)
+  const canDashboard = canAnalytics || canResults || canExams || role === 'SUPER_ADMIN' || role === 'ORG_ADMIN' || role === 'EXAM_MANAGER' || role === 'VIEWER';
+  const dashTab = document.getElementById('tab-dashboard');
+  if (dashTab) dashTab.style.display = canDashboard ? 'inline-block' : 'none';
+
   const examTab = document.getElementById('tab-exams');
   if (examTab) examTab.style.display = canExams ? 'inline-block' : 'none';
   const createExamBtn = document.getElementById('createExamBtn');
@@ -127,7 +132,8 @@ function applyRoleAwareUI() {
   }
 
   // Switch to default permissible tab
-  if (canExams) switchTab('exams');
+  if (canDashboard) switchTab('dashboard');
+  else if (canExams) switchTab('exams');
   else if (canQuestions) switchTab('questions');
   else if (canResults) switchTab('results');
   else if (canAnalytics) switchTab('report');
@@ -203,6 +209,7 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.tabpane').forEach((p) => p.style.display = p.id === `pane-${name}` ? 'block' : 'none');
+  if (name === 'dashboard') loadDashboard();
   if (name === 'exams') loadExams();
   if (name === 'questions') loadQuestions();
   if (name === 'config') loadConfig();
@@ -2308,6 +2315,569 @@ window.revokeOrgInvite = async function(id) {
     alert(err.message);
   }
 };
+
+/* ==========================================================================
+   DAY 18: SAAS ANALYTICS DASHBOARD & CHART.JS INTEGRATION
+   ========================================================================== */
+
+let dashboardCharts = {
+  attempts: null,
+  score: null,
+  completion: null,
+  college: null,
+  question: null
+};
+
+function destroyAllDashboardCharts() {
+  Object.keys(dashboardCharts).forEach((key) => {
+    if (dashboardCharts[key]) {
+      try { dashboardCharts[key].destroy(); } catch (e) {}
+      dashboardCharts[key] = null;
+    }
+  });
+}
+
+function renderEmptyChart(canvasId, message = 'No data available for the selected period') {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const parent = canvas.parentElement;
+  if (!parent) return;
+  canvas.style.display = 'none';
+  let emptyEl = parent.querySelector('.empty-chart');
+  if (!emptyEl) {
+    emptyEl = document.createElement('div');
+    emptyEl.className = 'empty-chart';
+    parent.appendChild(emptyEl);
+  }
+  emptyEl.innerHTML = `<span style="font-size:28px;margin-bottom:8px">📊</span><span style="font-weight:600">${message}</span>`;
+  emptyEl.style.display = 'flex';
+}
+
+function resetChartCanvas(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  canvas.style.display = 'block';
+  const parent = canvas.parentElement;
+  if (parent) {
+    const emptyEl = parent.querySelector('.empty-chart');
+    if (emptyEl) emptyEl.style.display = 'none';
+  }
+  return canvas;
+}
+
+function renderKpiTrend(elementId, change, comparisonAvailable) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+  if (!comparisonAvailable) {
+    el.className = 'kpi-trend neutral';
+    el.innerHTML = '&mdash; no prior data';
+    return;
+  }
+  if (change > 0) {
+    el.className = 'kpi-trend positive';
+    el.innerHTML = `&uarr; +${change}% vs prior`;
+  } else if (change < 0) {
+    el.className = 'kpi-trend negative';
+    el.innerHTML = `&darr; ${change}% vs prior`;
+  } else {
+    el.className = 'kpi-trend neutral';
+    el.innerHTML = `0% vs prior`;
+  }
+}
+
+function renderAttemptsChart(data) {
+  if (!data || !data.labels || data.labels.length === 0 || typeof Chart === 'undefined') {
+    renderEmptyChart('chartAttemptsOverTime', 'No attempt history recorded for this date range');
+    return;
+  }
+  const canvas = resetChartCanvas('chartAttemptsOverTime');
+  if (!canvas) return;
+  if (dashboardCharts.attempts) {
+    dashboardCharts.attempts.destroy();
+    dashboardCharts.attempts = null;
+  }
+  const ctx = canvas.getContext('2d');
+  dashboardCharts.attempts = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: data.labels,
+      datasets: [
+        {
+          label: 'Completed Attempts',
+          data: data.completed,
+          borderColor: '#10B981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          fill: true,
+          tension: 0.3,
+          borderWidth: 2
+        },
+        {
+          label: 'In Progress Attempts',
+          data: data.inProgress,
+          borderColor: '#3B82F6',
+          backgroundColor: 'rgba(59, 130, 246, 0.05)',
+          fill: false,
+          tension: 0.3,
+          borderWidth: 2
+        },
+        {
+          label: 'Total Sessions',
+          data: data.total,
+          borderColor: '#9CA3AF',
+          borderDash: [4, 4],
+          fill: false,
+          tension: 0.3,
+          borderWidth: 1.5
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
+        tooltip: { padding: 10 }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderScoreChart(data) {
+  if (!data || !data.buckets || data.buckets.length === 0 || typeof Chart === 'undefined') {
+    renderEmptyChart('chartScoreDistribution', 'No completed attempts to analyze score distribution');
+    return;
+  }
+  const hasData = (data.counts || []).some(c => c > 0);
+  if (!hasData) {
+    renderEmptyChart('chartScoreDistribution', 'No graded attempts available in this period');
+    return;
+  }
+  const canvas = resetChartCanvas('chartScoreDistribution');
+  if (!canvas) return;
+  if (dashboardCharts.score) {
+    dashboardCharts.score.destroy();
+    dashboardCharts.score = null;
+  }
+  const ctx = canvas.getContext('2d');
+  dashboardCharts.score = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.buckets,
+      datasets: [{
+        label: 'Candidates',
+        data: data.counts,
+        backgroundColor: ['#EF4444', '#F59E0B', '#FCD34D', '#60A5FA', '#10B981'],
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterLabel: (context) => {
+              const pct = (data.percentages && data.percentages[context.dataIndex]) || 0;
+              return `${pct}% of total attempts`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderCompletionChart(data) {
+  if (!data || !data.counts || data.totalEligible === 0 || typeof Chart === 'undefined') {
+    renderEmptyChart('chartCompletionRate', 'No attempt sessions started in this period');
+    return;
+  }
+  const canvas = resetChartCanvas('chartCompletionRate');
+  if (!canvas) return;
+  if (dashboardCharts.completion) {
+    dashboardCharts.completion.destroy();
+    dashboardCharts.completion = null;
+  }
+  const ctx = canvas.getContext('2d');
+  dashboardCharts.completion = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.counts,
+        backgroundColor: ['#10B981', '#3B82F6', '#EF4444'],
+        hoverOffset: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const count = context.raw || 0;
+              const pct = (data.percentages && data.percentages[context.dataIndex]) || 0;
+              return ` ${context.label}: ${count} (${pct}%)`;
+            }
+          }
+        }
+      },
+      cutout: '65%'
+    }
+  });
+}
+
+function renderCollegeChart(data) {
+  if (!data || !data.colleges || data.colleges.length === 0 || typeof Chart === 'undefined') {
+    renderEmptyChart('chartCollegeDistribution', 'No candidate college registrations found');
+    return;
+  }
+  const canvas = resetChartCanvas('chartCollegeDistribution');
+  if (!canvas) return;
+  if (dashboardCharts.college) {
+    dashboardCharts.college.destroy();
+    dashboardCharts.college = null;
+  }
+  const ctx = canvas.getContext('2d');
+  dashboardCharts.college = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.colleges,
+      datasets: [{
+        label: 'Students',
+        data: data.studentCounts,
+        backgroundColor: '#6366F1',
+        borderRadius: 6
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: { beginAtZero: true, ticks: { precision: 0, font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderQuestionPerformanceChart(data) {
+  if (!data || !data.questions || data.questions.length === 0 || typeof Chart === 'undefined') {
+    renderEmptyChart('chartQuestionPerformance', 'No graded questions recorded in this period');
+    return;
+  }
+  const canvas = resetChartCanvas('chartQuestionPerformance');
+  if (!canvas) return;
+  if (dashboardCharts.question) {
+    dashboardCharts.question.destroy();
+    dashboardCharts.question = null;
+  }
+  const labels = data.questions.map(q => {
+    const t = q.title || `Q#${q.questionId}`;
+    return t.length > 22 ? t.slice(0, 20) + '...' : t;
+  });
+  const accuracies = data.questions.map(q => q.accuracy);
+  const colors = accuracies.map(acc => acc >= 70 ? '#10B981' : (acc >= 40 ? '#F59E0B' : '#EF4444'));
+
+  const ctx = canvas.getContext('2d');
+  dashboardCharts.question = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Accuracy %',
+        data: accuracies,
+        backgroundColor: colors,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            afterLabel: (ctx) => {
+              const q = data.questions[ctx.dataIndex];
+              return `Correct: ${q.correctCount} / ${q.totalAttempts} (Avg: ${q.avgScore} pts)`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%', font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+async function populateDashboardExams() {
+  const select = document.getElementById('dashExamSelect');
+  if (!select || select.children.length > 1) return;
+
+  try {
+    const res = await aapi('/api/admin/exams');
+    const exams = Array.isArray(res) ? res : (res.data?.items || res.data || []);
+    for (const ex of exams) {
+      const opt = document.createElement('option');
+      opt.value = ex.id;
+      opt.textContent = `${ex.name} (${ex.code})`;
+      select.appendChild(opt);
+    }
+  } catch (err) {
+    // Non-fatal if exams cannot be loaded
+  }
+}
+
+async function populateSuperAdminOrgScope() {
+  if (!currentUser || currentUser.role !== 'SUPER_ADMIN') return;
+  const scopeWrap = document.getElementById('dashSuperAdminScope');
+  const scopeSelect = document.getElementById('dashOrgScopeSelect');
+  if (!scopeWrap || !scopeSelect) return;
+
+  scopeWrap.style.display = 'flex';
+  if (scopeSelect.children.length > 1) return;
+
+  try {
+    const res = await aapi('/api/admin/organizations');
+    const orgs = Array.isArray(res) ? res : (res.data?.items || res.data || []);
+    for (const org of orgs) {
+      const opt = document.createElement('option');
+      opt.value = org.id;
+      opt.textContent = org.name;
+      scopeSelect.appendChild(opt);
+    }
+  } catch (err) {
+    // Non-fatal
+  }
+}
+
+async function loadDashboard() {
+  if (!currentUser) return;
+  const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
+
+  // Setup scopes & dropdowns
+  if (isSuperAdmin) {
+    await populateSuperAdminOrgScope();
+  } else {
+    const scopeWrap = document.getElementById('dashSuperAdminScope');
+    if (scopeWrap) scopeWrap.style.display = 'none';
+  }
+  await populateDashboardExams();
+
+  const errBanner = document.getElementById('dashErrorBanner');
+  if (errBanner) {
+    errBanner.style.display = 'none';
+    errBanner.textContent = '';
+  }
+
+  // Determine active filters
+  const period = document.getElementById('dashPeriodSelect')?.value || '30d';
+  const examId = document.getElementById('dashExamSelect')?.value || '';
+  const orgScope = document.getElementById('dashOrgScopeSelect')?.value || 'platform';
+
+  const queryParams = new URLSearchParams({ period });
+  if (examId) queryParams.append('exam_id', examId);
+
+  if (period === 'custom') {
+    const start = document.getElementById('dashStartDate')?.value;
+    const end = document.getElementById('dashEndDate')?.value;
+    if (start && end) {
+      queryParams.append('start_date', start);
+      queryParams.append('end_date', end);
+    }
+  }
+
+  const badgeEl = document.getElementById('dashOrgBadge');
+  const orgBreakdownCard = document.getElementById('superAdminOrgBreakdownCard');
+
+  try {
+    let kpiData = null;
+    let attemptsData = null;
+    let scoreData = null;
+    let completionData = null;
+    let collegeData = null;
+    let questionData = null;
+
+    if (isSuperAdmin && orgScope === 'platform') {
+      // Platform-wide overview
+      if (badgeEl) {
+        badgeEl.textContent = 'Platform Overview';
+        badgeEl.className = 'status-badge status-live';
+      }
+      if (orgBreakdownCard) orgBreakdownCard.style.display = 'block';
+
+      const res = await aapi(`/api/admin/dashboard/platform-overview?${queryParams.toString()}`);
+      const payload = res.data || res;
+      kpiData = payload.kpis || payload;
+      attemptsData = payload.attemptsOverTime;
+      scoreData = payload.scoreDistribution;
+      completionData = payload.completionRate;
+      collegeData = payload.collegeDistribution;
+      questionData = payload.questionPerformance;
+
+      // Render platform organizations breakdown table
+      const tbody = document.getElementById('platformOrgsBody');
+      if (tbody) {
+        tbody.innerHTML = '';
+        const orgs = payload.organizationsBreakdown || [];
+        if (orgs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No organizations found.</td></tr>';
+        } else {
+          for (const org of orgs) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td><strong>${escapeHtml(org.name)}</strong> <span style="font-size:11px;color:var(--muted)">(${escapeHtml(org.slug)})</span></td>
+              <td><span class="status-badge ${org.status === 'ACTIVE' ? 'status-published' : 'status-archived'}">${org.status}</span></td>
+              <td>${org.total_students || 0}</td>
+              <td>${org.active_exams || 0}</td>
+              <td>${org.completed_attempts || 0}</td>
+              <td>${org.avg_score !== null ? org.avg_score + '%' : '—'}</td>
+            `;
+            tbody.appendChild(tr);
+          }
+        }
+      }
+    } else if (isSuperAdmin && orgScope !== 'platform') {
+      // Super Admin viewing a single organization
+      if (orgBreakdownCard) orgBreakdownCard.style.display = 'none';
+      const res = await aapi(`/api/admin/dashboard/organizations/${orgScope}?${queryParams.toString()}`);
+      const payload = res.data || res;
+      kpiData = payload.kpis;
+      attemptsData = payload.attemptsOverTime;
+      scoreData = payload.scoreDistribution;
+      completionData = payload.completionRate;
+      collegeData = payload.collegeDistribution;
+      questionData = payload.questionPerformance;
+
+      if (badgeEl && kpiData?.meta?.organizationName) {
+        badgeEl.textContent = kpiData.meta.organizationName;
+        badgeEl.className = 'status-badge status-live';
+      }
+    } else {
+      // Tenant Admin / Manager / Viewer
+      if (orgBreakdownCard) orgBreakdownCard.style.display = 'none';
+
+      const [kpiRes, attRes, scRes, compRes, colRes, qRes] = await Promise.all([
+        aapi(`/api/organization/dashboard/overview?${queryParams.toString()}`),
+        aapi(`/api/organization/dashboard/attempts-over-time?${queryParams.toString()}`),
+        aapi(`/api/organization/dashboard/score-distribution?${queryParams.toString()}`),
+        aapi(`/api/organization/dashboard/completion-rate?${queryParams.toString()}`),
+        aapi(`/api/organization/dashboard/college-distribution?${queryParams.toString()}`),
+        aapi(`/api/organization/dashboard/question-performance?${queryParams.toString()}`)
+      ]);
+
+      kpiData = kpiRes.data || kpiRes;
+      attemptsData = attRes.data || attRes;
+      scoreData = scRes.data || scRes;
+      completionData = compRes.data || compRes;
+      collegeData = colRes.data || colRes;
+      questionData = qRes.data || qRes;
+
+      if (badgeEl && kpiData?.meta?.organizationName) {
+        badgeEl.textContent = kpiData.meta.organizationName;
+        badgeEl.className = 'status-badge status-live';
+      }
+    }
+
+    // Populate 8 KPI Cards
+    const kpis = kpiData.kpis || kpiData;
+    if (kpis) {
+      if (kpis.totalStudents) {
+        document.getElementById('kpiTotalStudents').textContent = kpis.totalStudents.value.toLocaleString();
+        renderKpiTrend('kpiTrendStudents', kpis.totalStudents.percentageChange, kpis.totalStudents.comparisonAvailable);
+      }
+      if (kpis.totalExams) {
+        document.getElementById('kpiTotalExams').textContent = kpis.totalExams.value.toLocaleString();
+        renderKpiTrend('kpiTrendExams', kpis.totalExams.percentageChange, kpis.totalExams.comparisonAvailable);
+      }
+      if (kpis.activeExams) {
+        document.getElementById('kpiActiveExams').textContent = kpis.activeExams.value.toLocaleString();
+        renderKpiTrend('kpiTrendActiveExams', kpis.activeExams.percentageChange, kpis.activeExams.comparisonAvailable);
+      }
+      if (kpis.completedAttempts) {
+        document.getElementById('kpiCompletedAttempts').textContent = kpis.completedAttempts.value.toLocaleString();
+        renderKpiTrend('kpiTrendAttempts', kpis.completedAttempts.percentageChange, kpis.completedAttempts.comparisonAvailable);
+      }
+      if (kpis.averageScore) {
+        document.getElementById('kpiAverageScore').textContent = `${kpis.averageScore.value}%`;
+        renderKpiTrend('kpiTrendScore', kpis.averageScore.percentageChange, kpis.averageScore.comparisonAvailable);
+      }
+      if (kpis.passRate) {
+        document.getElementById('kpiPassRate').textContent = `${kpis.passRate.value}%`;
+        renderKpiTrend('kpiTrendPassRate', kpis.passRate.percentageChange, kpis.passRate.comparisonAvailable);
+        const ratioEl = document.getElementById('kpiPassRateRatio');
+        if (ratioEl && kpis.passRate.metadata) {
+          ratioEl.textContent = `${kpis.passRate.metadata.passedCount} / ${kpis.passRate.metadata.totalEligibleCount} passed`;
+        }
+      }
+      if (kpis.scholarshipsAwarded) {
+        document.getElementById('kpiScholarshipsAwarded').textContent = kpis.scholarshipsAwarded.value.toLocaleString();
+        renderKpiTrend('kpiTrendScholarships', kpis.scholarshipsAwarded.percentageChange, kpis.scholarshipsAwarded.comparisonAvailable);
+      }
+      if (kpis.certificatesGenerated) {
+        document.getElementById('kpiCertificatesGenerated').textContent = kpis.certificatesGenerated.value.toLocaleString();
+        renderKpiTrend('kpiTrendCertificates', kpis.certificatesGenerated.percentageChange, kpis.certificatesGenerated.comparisonAvailable);
+      }
+    }
+
+    // Render Charts
+    renderAttemptsChart(attemptsData);
+    renderScoreChart(scoreData);
+    renderCompletionChart(completionData);
+    renderCollegeChart(collegeData);
+    renderQuestionPerformanceChart(questionData);
+
+  } catch (err) {
+    if (errBanner) {
+      errBanner.textContent = `Failed to load analytics: ${err.message}`;
+      errBanner.style.display = 'block';
+    }
+  }
+}
+
+// Wire Dashboard Filter Event Listeners
+document.getElementById('dashPeriodSelect')?.addEventListener('change', (e) => {
+  const isCustom = e.target.value === 'custom';
+  const customBox = document.getElementById('dashCustomDates');
+  if (customBox) customBox.style.display = isCustom ? 'flex' : 'none';
+  if (!isCustom) loadDashboard();
+});
+
+document.getElementById('dashApplyCustomBtn')?.addEventListener('click', () => {
+  loadDashboard();
+});
+
+document.getElementById('dashExamSelect')?.addEventListener('change', () => {
+  loadDashboard();
+});
+
+document.getElementById('dashOrgScopeSelect')?.addEventListener('change', () => {
+  loadDashboard();
+});
+
+document.getElementById('dashRefreshBtn')?.addEventListener('click', () => {
+  loadDashboard();
+});
 
 // Initial boot
 gate();

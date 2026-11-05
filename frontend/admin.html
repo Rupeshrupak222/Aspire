@@ -37,6 +37,7 @@
   <div id="adminBox" style="display:none">
     <div id="judge0note" style="display:none"></div>
     <div class="tabs" id="adminTabs">
+      <button class="tab" data-tab="dashboard" id="tab-dashboard">Dashboard</button>
       <button class="tab" data-tab="exams" id="tab-exams">Exams</button>
       <button class="tab" data-tab="questions" id="tab-questions">Questions</button>
       <button class="tab" data-tab="config" id="tab-config">Test Config</button>
@@ -45,6 +46,198 @@
       <button class="tab" data-tab="users" id="tab-users" style="display:none">Users</button>
       <button class="tab" data-tab="organizations" id="tab-organizations" style="display:none">Organizations</button>
       <button class="tab" data-tab="branding" id="tab-branding" style="display:none">Branding & Profile</button>
+    </div>
+
+    <!-- SaaS Analytics Dashboard (Day 18) -->
+    <div class="tabpane card" id="pane-dashboard" style="display:none">
+      <div class="dash-header">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <h2 style="margin:0">Analytics Dashboard</h2>
+            <span id="dashOrgBadge" class="status-badge status-live">Adyapan</span>
+          </div>
+          <span style="font-size:13px;color:var(--muted)">Authoritative assessment metrics, candidate performance trends, and risk telemetry.</span>
+        </div>
+        <div class="dash-filters">
+          <div id="dashSuperAdminScope" style="display:none;align-items:center;gap:6px">
+            <label style="margin:0;font-size:12px;color:var(--muted)">Scope:</label>
+            <select id="dashOrgScopeSelect" style="width:auto;margin:0;padding:6px 10px;font-size:13px">
+              <option value="platform">All Organizations (Platform)</option>
+            </select>
+          </div>
+          <select id="dashPeriodSelect" style="width:auto;margin:0;padding:6px 10px;font-size:13px">
+            <option value="today">Today</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="30d" selected>Last 30 Days</option>
+            <option value="90d">Last 90 Days</option>
+            <option value="custom">Custom Range</option>
+          </select>
+          <div id="dashCustomDates" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="dashStartDate" style="width:auto;margin:0;padding:5px 8px;font-size:13px">
+            <span style="color:var(--muted);font-size:12px">to</span>
+            <input type="date" id="dashEndDate" style="width:auto;margin:0;padding:5px 8px;font-size:13px">
+            <button id="dashApplyCustomBtn" class="btn small" style="margin:0;padding:6px 10px">Apply</button>
+          </div>
+          <select id="dashExamSelect" style="width:auto;max-width:200px;margin:0;padding:6px 10px;font-size:13px">
+            <option value="">All Exams</option>
+          </select>
+          <button id="dashRefreshBtn" class="btn small ghost" style="margin:0;padding:6px 12px">&#8635; Refresh</button>
+        </div>
+      </div>
+
+      <div id="dashErrorBanner" class="err" style="display:none;margin-bottom:16px"></div>
+
+      <!-- 8 SaaS KPI Metric Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card" id="cardTotalStudents">
+          <div class="kpi-label">Total Students</div>
+          <div class="kpi-value" id="kpiTotalStudents">—</div>
+          <div class="kpi-trend" id="kpiTrendStudents"></div>
+          <div class="kpi-subtext">Registered candidates</div>
+        </div>
+
+        <div class="kpi-card" id="cardTotalExams">
+          <div class="kpi-label">Total Exams</div>
+          <div class="kpi-value" id="kpiTotalExams">—</div>
+          <div class="kpi-trend" id="kpiTrendExams"></div>
+          <div class="kpi-subtext">Authored assessments</div>
+        </div>
+
+        <div class="kpi-card" id="cardActiveExams">
+          <div class="kpi-label">Active Exams</div>
+          <div class="kpi-value" id="kpiActiveExams">—</div>
+          <div class="kpi-trend" id="kpiTrendActiveExams"></div>
+          <div class="kpi-subtext">PUBLISHED & LIVE</div>
+        </div>
+
+        <div class="kpi-card" id="cardCompletedAttempts">
+          <div class="kpi-label">Completed Attempts</div>
+          <div class="kpi-value" id="kpiCompletedAttempts">—</div>
+          <div class="kpi-trend" id="kpiTrendAttempts"></div>
+          <div class="kpi-subtext">Submitted exams</div>
+        </div>
+
+        <div class="kpi-card" id="cardAverageScore">
+          <div class="kpi-label">Average Score</div>
+          <div class="kpi-value" id="kpiAverageScore">—</div>
+          <div class="kpi-trend" id="kpiTrendScore"></div>
+          <div class="kpi-subtext">Across completed attempts</div>
+        </div>
+
+        <div class="kpi-card" id="cardPassRate">
+          <div class="kpi-label">Pass Rate</div>
+          <div class="kpi-value" id="kpiPassRate">—</div>
+          <div class="kpi-trend" id="kpiTrendPassRate"></div>
+          <div class="kpi-subtext" id="kpiPassRateRatio">Passed / eligible attempts</div>
+        </div>
+
+        <div class="kpi-card" id="cardScholarshipsAwarded">
+          <div class="kpi-label">Scholarships</div>
+          <div class="kpi-value" id="kpiScholarshipsAwarded">—</div>
+          <div class="kpi-trend" id="kpiTrendScholarships"></div>
+          <div class="kpi-subtext">Candidates receiving aid</div>
+        </div>
+
+        <div class="kpi-card" id="cardCertificatesGenerated">
+          <div class="kpi-label">Certificates</div>
+          <div class="kpi-value" id="kpiCertificatesGenerated">—</div>
+          <div class="kpi-trend" id="kpiTrendCertificates"></div>
+          <div class="kpi-subtext">Verified credentials</div>
+        </div>
+      </div>
+
+      <!-- 5 Visual Charts Grid -->
+      <div class="charts-grid">
+        <!-- Attempts Over Time (Full Width) -->
+        <div class="chart-card full-width">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Attempts Over Time</h3>
+              <div class="chart-subtitle">Daily assessment volume comparing completed, in-progress, and total sessions</div>
+            </div>
+          </div>
+          <div class="chart-body" id="bodyAttemptsChart">
+            <canvas id="chartAttemptsOverTime"></canvas>
+          </div>
+        </div>
+
+        <!-- Score Distribution -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Score Distribution</h3>
+              <div class="chart-subtitle">Candidate performance clustered into percentage score buckets</div>
+            </div>
+          </div>
+          <div class="chart-body" id="bodyScoreChart">
+            <canvas id="chartScoreDistribution"></canvas>
+          </div>
+        </div>
+
+        <!-- Completion Rate -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Completion Rate</h3>
+              <div class="chart-subtitle">Proportion of attempts completed, currently in-progress, and expired</div>
+            </div>
+          </div>
+          <div class="chart-body" id="bodyCompletionChart">
+            <canvas id="chartCompletionRate"></canvas>
+          </div>
+        </div>
+
+        <!-- College Distribution -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">College Distribution</h3>
+              <div class="chart-subtitle">Candidate breakdown across registered colleges and universities</div>
+            </div>
+          </div>
+          <div class="chart-body" id="bodyCollegeChart">
+            <canvas id="chartCollegeDistribution"></canvas>
+          </div>
+        </div>
+
+        <!-- Question Performance -->
+        <div class="chart-card">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Question Accuracy</h3>
+              <div class="chart-subtitle">Average accuracy percentage across evaluated questions</div>
+            </div>
+          </div>
+          <div class="chart-body" id="bodyQuestionChart">
+            <canvas id="chartQuestionPerformance"></canvas>
+          </div>
+        </div>
+
+        <!-- Platform Organizations Overview Table (SUPER_ADMIN only) -->
+        <div class="chart-card full-width" id="superAdminOrgBreakdownCard" style="display:none">
+          <div class="chart-header">
+            <div>
+              <h3 class="chart-title">Platform Organizations Overview</h3>
+              <div class="chart-subtitle">Aggregated metrics and activity breakdown per organization tenant</div>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="data" id="platformOrgsTable">
+              <thead>
+                <tr>
+                  <th>Organization</th>
+                  <th>Status</th>
+                  <th>Total Students</th>
+                  <th>Active Exams</th>
+                  <th>Completed Attempts</th>
+                  <th>Avg Score</th>
+                </tr>
+              </thead>
+              <tbody id="platformOrgsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Exams Tab (Exam Builder 2.0) -->
@@ -763,6 +956,7 @@
 </div>
 <script src="/js/config.js"></script>
 <script src="/js/common.js"></script>
+<script src="/js/chart.umd.js"></script>
 <script src="/js/admin.js"></script>
 </body>
 </html>

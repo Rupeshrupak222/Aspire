@@ -65,13 +65,14 @@ async function requireAuth(req, res, next) {
   }
 }
 
-function requirePermission(permission) {
+function requirePermission(...permissions) {
   return (req, res, next) => {
     if (!req.user) {
       return next(new AuthenticationError('Authentication is required.'));
     }
 
-    if (!hasPermission(req.user.role, permission)) {
+    const permitted = permissions.some((p) => hasPermission(req.user.role, p));
+    if (!permitted) {
       recordAuditEvent({
         req,
         event: 'permission_denied',
@@ -79,7 +80,7 @@ function requirePermission(permission) {
         organizationId: req.user.organization_id,
         details: {
           role: req.user.role,
-          requiredPermission: permission,
+          requiredPermission: permissions.join(' | '),
           endpoint: req.originalUrl,
           method: req.method
         }

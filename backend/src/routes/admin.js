@@ -38,6 +38,8 @@ const examService = require('../services/exam.service');
 const { recordAuditEvent } = require('../services/audit.service');
 const proctoringRiskService = require('../services/proctoring-risk.service');
 const timerSubmissionService = require('../services/timer-submission.service');
+const dashboardService = require('../services/dashboard-analytics.service');
+const { dashboardFilterSchema } = require('../validation/dashboard.schemas');
 const metrics = require('../utils/metrics');
 const {
   createExamSchema,
@@ -1112,6 +1114,73 @@ router.get('/metrics', requirePermission(PERMISSIONS.RESULTS_READ), (req, res, n
     scoped: 'platform',
     data: metrics.getSnapshot()
   });
+});
+
+/* ---------- SaaS Dashboard Platform & Organization Analytics (Day 18) ---------- */
+
+/**
+ * GET /api/admin/dashboard/platform-overview
+ * Platform-wide SaaS analytics across all organizations (SUPER_ADMIN only).
+ */
+router.get('/dashboard/platform-overview', requirePermission(PERMISSIONS.ANALYTICS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN) {
+    return next(new AuthorizationError('Only Super Administrators can access platform-wide analytics overview.'));
+  }
+  try {
+    const overview = dashboardService.getPlatformOverview(req.query);
+    const attemptsOverTime = dashboardService.getAttemptsOverTime(null, req.query);
+    const scoreDistribution = dashboardService.getScoreDistribution(null, req.query);
+    const collegeDistribution = dashboardService.getCollegeDistribution(null, req.query);
+    const questionPerformance = dashboardService.getQuestionPerformance(null, req.query);
+    const completionRate = dashboardService.getCompletionRate(null, req.query);
+
+    res.json({
+      success: true,
+      data: {
+        ...overview,
+        attemptsOverTime,
+        scoreDistribution,
+        collegeDistribution,
+        questionPerformance,
+        completionRate
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/dashboard/organizations/:organizationId
+ * Specific organization dashboard analytics (SUPER_ADMIN or matching tenant admin).
+ */
+router.get('/dashboard/organizations/:organizationId', requirePermission(PERMISSIONS.ANALYTICS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  const targetOrgId = req.params.organizationId;
+  if (req.user.role !== ROLES.SUPER_ADMIN && Number(req.user.organization_id) !== Number(targetOrgId)) {
+    return next(new AuthorizationError('Access denied: cannot view analytics for another organization.'));
+  }
+  try {
+    const kpis = dashboardService.getOverviewKPIs(targetOrgId, req.query);
+    const attemptsOverTime = dashboardService.getAttemptsOverTime(targetOrgId, req.query);
+    const scoreDistribution = dashboardService.getScoreDistribution(targetOrgId, req.query);
+    const collegeDistribution = dashboardService.getCollegeDistribution(targetOrgId, req.query);
+    const questionPerformance = dashboardService.getQuestionPerformance(targetOrgId, req.query);
+    const completionRate = dashboardService.getCompletionRate(targetOrgId, req.query);
+
+    res.json({
+      success: true,
+      data: {
+        kpis,
+        attemptsOverTime,
+        scoreDistribution,
+        collegeDistribution,
+        questionPerformance,
+        completionRate
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

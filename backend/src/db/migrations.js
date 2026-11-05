@@ -785,6 +785,18 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_org_status_history_org ON organization_status_history(organization_id);
         `);
       }
+    },
+    {
+      version: '014_dashboard_analytics_indexes',
+      up: (d) => {
+        d.exec(`
+          -- Analytics query acceleration indexes
+          CREATE INDEX IF NOT EXISTS idx_attempts_org_status_sub ON attempts(organization_id, status, submitted_at);
+          CREATE INDEX IF NOT EXISTS idx_attempts_org_exam ON attempts(organization_id, exam_id);
+          CREATE INDEX IF NOT EXISTS idx_students_org_created ON students(organization_id, created_at);
+          CREATE INDEX IF NOT EXISTS idx_exams_org_status ON exams(organization_id, status);
+        `);
+      }
     }
   ];
 

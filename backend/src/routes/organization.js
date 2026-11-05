@@ -12,11 +12,13 @@ const { AuthorizationError, NotFoundError, ValidationError } = require('../error
 const orgService = require('../services/organization.service');
 const invitationService = require('../services/invitation.service');
 const { storageService } = require('../services/storage.service');
+const dashboardService = require('../services/dashboard-analytics.service');
 
 const {
   updateOrganizationProfileSchema,
   inviteAdminSchema
 } = require('../validation/organization.schemas');
+const { dashboardFilterSchema } = require('../validation/dashboard.schemas');
 
 // Memory storage for file uploads (max 2MB)
 const upload = multer({
@@ -258,6 +260,104 @@ router.post('/invitations/:id/revoke', requirePermission(PERMISSIONS.USERS_CREAT
     });
 
     res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/* ---------- SaaS Analytics Dashboard Routes (Day 18) ---------- */
+
+/**
+ * GET /api/organization/dashboard/overview
+ * Returns 8 KPIs for the authenticated organization.
+ */
+router.get('/dashboard/overview', requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.RESULTS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+    const data = dashboardService.getOverviewKPIs(orgId, req.query);
+    res.json({ success: true, data: data.kpis, meta: data.meta });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/organization/dashboard/attempts-over-time
+ * Returns daily attempt time-series with zero-filled intervals.
+ */
+router.get('/dashboard/attempts-over-time', requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.RESULTS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+    const data = dashboardService.getAttemptsOverTime(orgId, req.query);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/organization/dashboard/score-distribution
+ * Returns percentage buckets (0-20%, 21-40%, 41-60%, 61-80%, 81-100%).
+ */
+router.get('/dashboard/score-distribution', requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.RESULTS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+    const data = dashboardService.getScoreDistribution(orgId, req.query);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/organization/dashboard/college-distribution
+ * Returns student count breakdown grouped by college/institution.
+ */
+router.get('/dashboard/college-distribution', requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.RESULTS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+    const data = dashboardService.getCollegeDistribution(orgId, req.query);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/organization/dashboard/question-performance
+ * Returns question accuracy, correct, and incorrect breakdown.
+ */
+router.get('/dashboard/question-performance', requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.RESULTS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+    const data = dashboardService.getQuestionPerformance(orgId, req.query);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/organization/dashboard/completion-rate
+ * Returns completed, in-progress, and expired counts.
+ */
+router.get('/dashboard/completion-rate', requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.RESULTS_READ), validate({ query: dashboardFilterSchema }), (req, res, next) => {
+  try {
+    const orgId = req.user.organization_id;
+    if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+    const data = dashboardService.getCompletionRate(orgId, req.query);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }
