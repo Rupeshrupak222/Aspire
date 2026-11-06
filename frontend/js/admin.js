@@ -1082,6 +1082,10 @@ async function loadExams(page = 1) {
       let actionHtml = `<div style="display:flex;gap:6px;flex-wrap:wrap">`;
       actionHtml += `<button class="btn small ghost" onclick="openExamPreview(${e.id})">Preview</button>`;
 
+      if (hasPermission('analytics.read')) {
+        actionHtml += `<button class="btn small" style="background:#4F46E5;color:#fff" onclick="openExamAnalytics(${e.id})">Analytics</button>`;
+      }
+
       if (canEdit && (e.status === 'DRAFT' || e.status === 'REVIEW')) {
         actionHtml += `<button class="btn small ghost" onclick="openExamBuilder(${e.id})">Edit</button>`;
       }
@@ -2878,6 +2882,756 @@ document.getElementById('dashOrgScopeSelect')?.addEventListener('change', () => 
 document.getElementById('dashRefreshBtn')?.addEventListener('click', () => {
   loadDashboard();
 });
+
+// ============================================================================
+// DAY 19: EXAM ANALYTICS DASHBOARD FRONTEND LOGIC
+// ============================================================================
+
+let currentAnalyticsExamId = null;
+let currentAnalyticsSection = 'overview';
+let currentCandidatePage = 1;
+
+const examAnalyticsCharts = {
+  score: null,
+  duration: null,
+  passFail: null,
+  category: null
+};
+
+function destroyAllExamAnalyticsCharts() {
+  Object.keys(examAnalyticsCharts).forEach((k) => {
+    if (examAnalyticsCharts[k]) {
+      try { examAnalyticsCharts[k].destroy(); } catch (e) {}
+      examAnalyticsCharts[k] = null;
+    }
+  });
+}
+
+function renderEmptyAnalyticsChart(canvasId, message = 'No data available') {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const parent = canvas.parentElement;
+  if (!parent) return;
+  canvas.style.display = 'none';
+  let emptyEl = parent.querySelector('.empty-chart');
+  if (!emptyEl) {
+    emptyEl = document.createElement('div');
+    emptyEl.className = 'empty-chart';
+    parent.appendChild(emptyEl);
+  }
+  emptyEl.innerHTML = `<span style="font-size:28px;margin-bottom:8px">📊</span><span style="font-weight:600">${message}</span>`;
+  emptyEl.style.display = 'flex';
+}
+
+function resetAnalyticsCanvas(canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  canvas.style.display = 'block';
+  const parent = canvas.parentElement;
+  if (parent) {
+    const emptyEl = parent.querySelector('.empty-chart');
+    if (emptyEl) emptyEl.style.display = 'none';
+  }
+  return canvas;
+}
+
+window.openExamAnalytics = async function(examId) {
+  if (!examId) return;
+  currentAnalyticsExamId = examId;
+  currentAnalyticsSection = 'overview';
+  currentCandidatePage = 1;
+
+  switchTab('exam-analytics');
+  showAnalyticsSubSec('overview');
+  await loadCurrentExamAnalytics();
+};
+
+function showAnalyticsSubSec(secName) {
+  currentAnalyticsSection = secName;
+  document.querySelectorAll('.analytics-sub-sec').forEach((el) => {
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.analytics-nav-btn').forEach((btn) => {
+    if (btn.dataset.sec === secName) {
+      btn.classList.remove('ghost');
+      btn.style.background = '#4F46E5';
+      btn.style.color = '#fff';
+    } else {
+      btn.classList.add('ghost');
+      btn.style.background = '';
+      btn.style.color = '';
+    }
+  });
+
+  const targetEl = document.getElementById(`analyticsSec${secName.charAt(0).toUpperCase() + secName.slice(1)}`);
+  if (targetEl) targetEl.style.display = 'block';
+}
+
+async function loadCurrentExamAnalytics() {
+  if (!currentAnalyticsExamId) return;
+  const errBanner = document.getElementById('analyticsErrorBanner');
+  if (errBanner) errBanner.style.display = 'none';
+
+  const period = document.getElementById('analyticsPeriodSelect')?.value || 'all';
+
+  try {
+    // 1. Load Overview (always needed for header & KPI cards)
+    const overviewRes = await aapi(`/api/organization/exams/${currentAnalyticsExamId}/analytics/overview?period=${period}`);
+    if (overviewRes.success && overviewRes.data) {
+      renderExamHeader(overviewRes.data.exam);
+      renderExamOverview(overviewRes.data);
+    }
+
+    // 2. Load section-specific data based on active tab
+    if (currentAnalyticsSection === 'questions') {
+      await loadExamQuestionsView();
+    } else if (currentAnalyticsSection === 'coding') {
+      await loadExamCodingView();
+    } else if (currentAnalyticsSection === 'performance') {
+      await loadExamPerformanceView();
+    } else if (currentAnalyticsSection === 'candidates') {
+      await loadExamCandidatesView();
+    }
+  } catch (err) {
+    if (errBanner) {
+      errBanner.textContent = `Failed to load exam analytics: ${err.message}`;
+      errBanner.style.display = 'block';
+    }
+  }
+}
+
+function renderExamHeader(exam) {
+  if (!exam) return;
+  const nameEl = document.getElementById('analyticsExamName');
+  const statusEl = document.getElementById('analyticsExamStatus');
+  const metaEl = document.getElementById('analyticsExamMeta');
+
+  if (nameEl) nameEl.textContent = exam.name || `Exam #${exam.id}`;
+  if (statusEl) {
+    statusEl.textContent = exam.status;
+    statusEl.className = `status-badge status-${(exam.status || 'draft').toLowerCase()}`;
+  }
+  if (metaEl) {
+    metaEl.textContent = `Code: ${exam.code || 'N/A'} | Duration: ${exam.duration_minutes || 0} mins | Marks: ${exam.total_marks || 0} | Passing Score: ${exam.passing_score ?? 40}%`;
+  }
+}
+
+function renderExamOverview(data) {
+  const kpis = data.kpis || {};
+  const funnel = data.funnel || [];
+
+  // KPIs
+  document.getElementById('kpiExamRegistered').textContent = (kpis.registered ?? 0).toLocaleString();
+  document.getElementById('kpiExamStarted').textContent = (kpis.started ?? 0).toLocaleString();
+  document.getElementById('kpiExamStartRate').textContent = `${kpis.completionRate ?? 0}% started`;
+  document.getElementById('kpiExamCompleted').textContent = (kpis.completed ?? 0).toLocaleString();
+  document.getElementById('kpiExamCompletionRate').textContent = `${kpis.completionRate ?? 0}% completion rate`;
+  document.getElementById('kpiExamPassed').textContent = (kpis.passed ?? 0).toLocaleString();
+  document.getElementById('kpiExamPassRate').textContent = `${kpis.passRate ?? 0}% pass rate`;
+  document.getElementById('kpiExamFailed').textContent = (kpis.failed ?? 0).toLocaleString();
+  document.getElementById('kpiExamFailRate').textContent = `${kpis.failRate ?? 0}% fail rate`;
+  document.getElementById('kpiExamAbandoned').textContent = (kpis.abandoned ?? 0).toLocaleString();
+  document.getElementById('kpiExamAbandonRate').textContent = `${kpis.abandonmentRate ?? 0}% drop-off rate`;
+
+  // Secondary metrics
+  document.getElementById('kpiExamAvgScore').textContent = `${kpis.averageScore ?? 0}%`;
+  document.getElementById('kpiExamMedianScore').textContent = kpis.medianScore !== null ? `${kpis.medianScore}%` : '—';
+  document.getElementById('kpiExamHighestScore').textContent = kpis.highestScore !== null ? `${kpis.highestScore}%` : '—';
+  document.getElementById('kpiExamAvgDuration').textContent = kpis.averageDurationMinutes !== null ? `${kpis.averageDurationMinutes}m` : '—';
+  document.getElementById('kpiExamScholarships').textContent = (kpis.scholarshipsAwarded ?? 0).toLocaleString();
+
+  // Funnel visualization
+  renderFunnelProgression(funnel);
+}
+
+function renderFunnelProgression(funnel) {
+  const container = document.getElementById('funnelContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!funnel || funnel.length === 0) {
+    container.innerHTML = '<div style="color:var(--muted);padding:12px">No funnel data available</div>';
+    return;
+  }
+
+  funnel.forEach((step, idx) => {
+    const card = document.createElement('div');
+    card.style.cssText = 'flex:1;min-width:140px;background:#fff;padding:12px 14px;border-radius:6px;border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,0.05);position:relative';
+
+    const stageColors = {
+      Registered: '#4B5563',
+      Started: '#2563EB',
+      Completed: '#7C3AED',
+      Passed: '#059669'
+    };
+    const accentColor = stageColors[step.stage] || '#4F46E5';
+
+    card.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:${accentColor};text-transform:uppercase;letter-spacing:0.5px">${step.stage}</div>
+      <div style="font-size:22px;font-weight:700;margin:4px 0">${(step.count || 0).toLocaleString()}</div>
+      <div style="font-size:12px;color:var(--muted)">Conversion: <strong>${step.conversionRate || 0}%</strong></div>
+      ${step.dropOff > 0 ? `<div style="font-size:11px;color:var(--danger, #DC2626);margin-top:2px">-${step.dropOff} (${step.dropOffRate}%)</div>` : ''}
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function loadExamQuestionsView() {
+  if (!currentAnalyticsExamId) return;
+  const tbody = document.getElementById('examQuestionsBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:20px;color:var(--muted)">Loading questions psychometrics...</td></tr>';
+
+  const type = document.getElementById('qAnalyticsTypeFilter')?.value || 'all';
+  const difficulty = document.getElementById('qAnalyticsDifficultyFilter')?.value || 'all';
+  const sort = document.getElementById('qAnalyticsSortFilter')?.value || 'order_asc';
+  const search = document.getElementById('qAnalyticsSearch')?.value || '';
+
+  const params = new URLSearchParams();
+  if (type !== 'all') params.append('type', type);
+  if (difficulty !== 'all') params.append('difficulty', difficulty);
+  if (sort) params.append('sort', sort);
+  if (search) params.append('search', search);
+
+  const res = await aapi(`/api/organization/exams/${currentAnalyticsExamId}/analytics/questions?${params.toString()}`);
+  if (!res.success || !res.data) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--danger);padding:20px">Failed to load question analytics</td></tr>';
+    return;
+  }
+
+  const badge = document.getElementById('qAnalyticsSampleBadge');
+  if (badge) {
+    badge.textContent = `Sample Size: ${res.data.sampleSize || 0} completed attempts ${res.data.sampleSizeInsufficient ? '(Insufficient for D calculation, min 10 required)' : ''}`;
+  }
+
+  const items = res.data.questions || [];
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--muted)">No questions matched the selected filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  items.forEach((q, idx) => {
+    const tr = document.createElement('tr');
+
+    const diffColors = {
+      VERY_EASY: '#059669',
+      EASY: '#10B981',
+      MODERATE: '#3B82F6',
+      DIFFICULT: '#D97706',
+      VERY_DIFFICULT: '#DC2626'
+    };
+    const diffColor = diffColors[q.difficulty] || '#6B7280';
+
+    let discHtml = '<span style="color:var(--muted)">N/A</span>';
+    if (!q.sampleSizeInsufficient && q.discriminationIndex !== null) {
+      const d = q.discriminationIndex;
+      const dColor = d >= 0.40 ? '#059669' : (d >= 0.20 ? '#2563EB' : (d >= 0.00 ? '#D97706' : '#DC2626'));
+      discHtml = `<strong style="color:${dColor}">${d > 0 ? '+' : ''}${d}</strong> <span style="font-size:11px;color:var(--muted)">(${q.discriminationRating})</span>`;
+    }
+
+    const timeHtml = q.hasTimingData && q.averageTimeSeconds !== null ? `${q.averageTimeSeconds}s` : '<span style="color:var(--muted)">—</span>';
+
+    tr.innerHTML = `
+      <td>${q.questionNumber || idx + 1}</td>
+      <td><span class="status-badge" style="background:#F3F4F6;color:#374151;text-transform:uppercase">${q.type}</span></td>
+      <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(q.title)}">
+        <strong>${escapeHtml(q.title)}</strong>
+        <div style="font-size:11px;color:var(--muted)">${escapeHtml(q.sectionName || q.category)}</div>
+      </td>
+      <td>${q.marks}</td>
+      <td>${q.totalEligibleAttempts}</td>
+      <td><strong style="color:#059669">${q.correctPercentage}%</strong> <span style="font-size:11px;color:var(--muted)">(${q.correctCount})</span></td>
+      <td><strong style="color:#DC2626">${q.wrongPercentage}%</strong> <span style="font-size:11px;color:var(--muted)">(${q.wrongCount})</span></td>
+      <td>${q.unansweredCount} <span style="font-size:11px;color:var(--muted)">(${q.unansweredPercentage}%)</span></td>
+      <td>${timeHtml}</td>
+      <td><span class="status-badge" style="background:${diffColor}15;color:${diffColor};font-weight:600">${q.difficulty}</span></td>
+      <td>${discHtml}</td>
+      <td>
+        <button class="btn small ghost" onclick="inspectQuestionDetail(${currentAnalyticsExamId}, ${q.questionId})">Inspect</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+window.inspectQuestionDetail = async function(examId, questionId) {
+  const modal = document.getElementById('questionAnalyticsModal');
+  const body = document.getElementById('qModalBody');
+  const title = document.getElementById('qModalTitle');
+  const meta = document.getElementById('qModalMeta');
+
+  if (!modal || !body) return;
+  modal.style.display = 'block';
+  body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)">Loading question details...</div>';
+
+  try {
+    const res = await aapi(`/api/organization/exams/${examId}/analytics/questions/${questionId}`);
+    if (!res.success || !res.data) {
+      body.innerHTML = '<div style="color:var(--danger)">Failed to load question details.</div>';
+      return;
+    }
+
+    const { question, stats, optionsBreakdown, codingBreakdown } = res.data;
+    if (title) title.textContent = `Question #${question.id} — ${question.type.toUpperCase()}`;
+    if (meta) meta.textContent = `Category: ${question.category} | Marks: ${question.marks} | Accuracy: ${stats.overallAccuracy}% (${stats.difficulty})`;
+
+    let html = `
+      <div style="background:#F9FAFB;padding:12px;border-radius:6px;border:1px solid var(--line);margin-bottom:16px">
+        <strong>Prompt / Text:</strong>
+        <p style="margin:6px 0 0;font-size:14px;white-space:pre-wrap">${escapeHtml(question.questionText || question.title)}</p>
+      </div>
+    `;
+
+    if (question.type === 'mcq' && optionsBreakdown) {
+      html += `
+        <h4 style="margin-top:0;margin-bottom:12px">Candidate Option Selection Distribution</h4>
+        <div style="display:flex;flex-direction:column;gap:10px">
+      `;
+
+      optionsBreakdown.forEach((opt) => {
+        const borderCol = opt.isCorrect ? '#059669' : '#E5E7EB';
+        const bgCol = opt.isCorrect ? '#ECFDF5' : '#FFFFFF';
+        html += `
+          <div style="padding:10px 14px;border:1px solid ${borderCol};background:${bgCol};border-radius:6px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span style="font-weight:600">Option ${String.fromCharCode(65 + opt.index)}: ${escapeHtml(opt.text)} ${opt.isCorrect ? '<span class="status-badge status-live" style="margin-left:6px">Correct Answer</span>' : ''}</span>
+              <span><strong>${opt.count}</strong> votes (${opt.percentage}%)</span>
+            </div>
+            <div style="background:#E5E7EB;height:8px;border-radius:4px;overflow:hidden">
+              <div style="background:${opt.isCorrect ? '#059669' : '#6B7280'};height:100%;width:${opt.percentage}%"></div>
+            </div>
+          </div>
+        `;
+      });
+      html += `</div>`;
+    } else if (question.type === 'code' && codingBreakdown) {
+      html += `
+        <h4 style="margin-top:0;margin-bottom:12px">Execution Architecture Outcomes</h4>
+        <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(130px, 1fr))">
+          <div class="kpi-card">
+            <div class="kpi-label">Submissions</div>
+            <div class="kpi-value">${codingBreakdown.totalSubmissions}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Accepted</div>
+            <div class="kpi-value" style="color:#059669">${codingBreakdown.acceptedCount}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Compile Errors</div>
+            <div class="kpi-value" style="color:#DC2626">${codingBreakdown.compilationFailures}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Runtime Errors</div>
+            <div class="kpi-value" style="color:#D97706">${codingBreakdown.runtimeFailures}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Timeouts</div>
+            <div class="kpi-value" style="color:#B45309">${codingBreakdown.timeouts}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Pass Rate</div>
+            <div class="kpi-value">${codingBreakdown.testCasePassRate}%</div>
+          </div>
+        </div>
+      `;
+    }
+
+    body.innerHTML = html;
+  } catch (err) {
+    body.innerHTML = `<div style="color:var(--danger)">Error: ${err.message}</div>`;
+  }
+};
+
+document.getElementById('closeQModalBtn')?.addEventListener('click', () => {
+  const modal = document.getElementById('questionAnalyticsModal');
+  if (modal) modal.style.display = 'none';
+});
+
+async function loadExamCodingView() {
+  if (!currentAnalyticsExamId) return;
+  const tbody = document.getElementById('examCodingQuestionsBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--muted)">Loading asynchronous coding analytics...</td></tr>';
+
+  const period = document.getElementById('analyticsPeriodSelect')?.value || 'all';
+  const res = await aapi(`/api/organization/exams/${currentAnalyticsExamId}/analytics/coding?period=${period}`);
+  if (!res.success || !res.data) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--danger);padding:20px">Failed to load coding metrics</td></tr>';
+    return;
+  }
+
+  const { summary, questions } = res.data;
+
+  document.getElementById('kpiCodingTotal').textContent = (summary.totalCodingSubmissions || 0).toLocaleString();
+  document.getElementById('kpiCodingUniqueStudents').textContent = `${summary.uniqueCandidatesSubmitting || 0} unique candidates`;
+  document.getElementById('kpiCodingAccepted').textContent = (summary.successfulExecutions || 0).toLocaleString();
+  document.getElementById('kpiCodingCompileErrors').textContent = (summary.compilationFailures || 0).toLocaleString();
+  document.getElementById('kpiCodingRuntimeErrors').textContent = (summary.runtimeFailures || 0).toLocaleString();
+  document.getElementById('kpiCodingTimeouts').textContent = (summary.timeouts || 0).toLocaleString();
+  document.getElementById('kpiCodingTcPassRate').textContent = `${summary.testCasePassRate || 0}%`;
+  document.getElementById('kpiCodingTcRatio').textContent = `${summary.testCasesPassed || 0} / ${summary.testCasesEvaluated || 0} evaluated`;
+
+  if (!questions || questions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No coding questions or submissions recorded for this exam.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  questions.forEach((q) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${escapeHtml(q.title || `Question #${q.questionId}`)}</strong></td>
+      <td>${q.marks}</td>
+      <td>${q.submissionsCount}</td>
+      <td>${q.uniqueCandidates}</td>
+      <td><strong style="color:#059669">${q.acceptedCount}</strong></td>
+      <td><span style="color:#DC2626">${q.compilationFailures}</span></td>
+      <td><span style="color:#D97706">${q.runtimeFailures}</span></td>
+      <td><span style="color:#B45309">${q.timeouts}</span></td>
+      <td><strong>${q.testCasePassRate}%</strong></td>
+      <td>${q.averageScore} / ${q.marks}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function loadExamPerformanceView() {
+  if (!currentAnalyticsExamId) return;
+  const period = document.getElementById('analyticsPeriodSelect')?.value || 'all';
+
+  const res = await aapi(`/api/organization/exams/${currentAnalyticsExamId}/analytics/performance?period=${period}`);
+  if (!res.success || !res.data) return;
+
+  const { scoreDistribution, durationDistribution, passFail, statistics, categoryPerformance } = res.data;
+
+  // 1. Score Distribution Chart
+  renderExamScoreChart(scoreDistribution);
+
+  // 2. Duration Distribution Chart
+  renderExamDurationChart(durationDistribution);
+
+  // 3. Pass / Fail Chart
+  renderExamPassFailChart(passFail);
+
+  // 4. Category Performance Chart
+  renderExamCategoryChart(categoryPerformance);
+
+  // 5. Statistics Table
+  renderExamStatsGrid(statistics);
+}
+
+function renderExamScoreChart(distribution) {
+  if (!window.Chart) return;
+  if (!distribution || distribution.length === 0 || distribution.every(d => d.count === 0)) {
+    renderEmptyAnalyticsChart('chartExamScoreDistribution', 'No completed attempts to analyze score distribution');
+    return;
+  }
+
+  const canvas = resetAnalyticsCanvas('chartExamScoreDistribution');
+  if (!canvas) return;
+
+  if (examAnalyticsCharts.score) {
+    try { examAnalyticsCharts.score.destroy(); } catch (e) {}
+    examAnalyticsCharts.score = null;
+  }
+
+  const ctx = canvas.getContext('2d');
+  examAnalyticsCharts.score = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: distribution.map(d => d.bucket),
+      datasets: [{
+        label: 'Candidates',
+        data: distribution.map(d => d.count),
+        backgroundColor: '#4F46E5',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+function renderExamDurationChart(distribution) {
+  if (!window.Chart) return;
+  if (!distribution || distribution.length === 0 || distribution.every(d => d.count === 0)) {
+    renderEmptyAnalyticsChart('chartExamDurationDistribution', 'No duration history recorded for this date range');
+    return;
+  }
+
+  const canvas = resetAnalyticsCanvas('chartExamDurationDistribution');
+  if (!canvas) return;
+
+  if (examAnalyticsCharts.duration) {
+    try { examAnalyticsCharts.duration.destroy(); } catch (e) {}
+    examAnalyticsCharts.duration = null;
+  }
+
+  const ctx = canvas.getContext('2d');
+  examAnalyticsCharts.duration = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: distribution.map(d => d.bucket),
+      datasets: [{
+        label: 'Attempts',
+        data: distribution.map(d => d.count),
+        backgroundColor: '#7C3AED',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+function renderExamPassFailChart(passFail) {
+  if (!window.Chart) return;
+  if (!passFail || (passFail.passed === 0 && passFail.failed === 0)) {
+    renderEmptyAnalyticsChart('chartExamPassFail', 'No finalized attempts available');
+    return;
+  }
+
+  const canvas = resetAnalyticsCanvas('chartExamPassFail');
+  if (!canvas) return;
+
+  if (examAnalyticsCharts.passFail) {
+    try { examAnalyticsCharts.passFail.destroy(); } catch (e) {}
+    examAnalyticsCharts.passFail = null;
+  }
+
+  const ctx = canvas.getContext('2d');
+  examAnalyticsCharts.passFail = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: [`Passed (${passFail.passRate}%)`, `Failed (${passFail.failRate}%)`],
+      datasets: [{
+        data: [passFail.passed, passFail.failed],
+        backgroundColor: ['#059669', '#DC2626'],
+        borderWidth: 2,
+        borderColor: '#FFFFFF'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      cutout: '65%'
+    }
+  });
+}
+
+function renderExamCategoryChart(categories) {
+  if (!window.Chart) return;
+  if (!categories || categories.length === 0) {
+    renderEmptyAnalyticsChart('chartExamCategoryPerformance', 'No section or category data found');
+    return;
+  }
+
+  const canvas = resetAnalyticsCanvas('chartExamCategoryPerformance');
+  if (!canvas) return;
+
+  if (examAnalyticsCharts.category) {
+    try { examAnalyticsCharts.category.destroy(); } catch (e) {}
+    examAnalyticsCharts.category = null;
+  }
+
+  const ctx = canvas.getContext('2d');
+  examAnalyticsCharts.category = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: categories.map(c => c.category.toUpperCase()),
+      datasets: [{
+        label: 'Accuracy %',
+        data: categories.map(c => c.averagePercentage),
+        backgroundColor: '#2563EB',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, max: 100 }
+      }
+    }
+  });
+}
+
+function renderExamStatsGrid(stats) {
+  const container = document.getElementById('examStatsGrid');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const metrics = [
+    { label: 'Count (N)', val: stats.count },
+    { label: 'Mean', val: stats.mean !== null ? `${stats.mean}%` : '—' },
+    { label: 'Median', val: stats.median !== null ? `${stats.median}%` : '—' },
+    { label: 'Std Dev (σ)', val: stats.standardDeviation !== null ? stats.standardDeviation : '—' },
+    { label: 'Min Score', val: stats.min !== null ? `${stats.min}%` : '—' },
+    { label: 'Max Score', val: stats.max !== null ? `${stats.max}%` : '—' },
+    { label: '25th Pct (Q1)', val: stats.q1 !== null ? `${stats.q1}%` : '—' },
+    { label: '75th Pct (Q3)', val: stats.q3 !== null ? `${stats.q3}%` : '—' },
+    { label: '90th Pct (P90)', val: stats.p90 !== null ? `${stats.p90}%` : '—' },
+    { label: 'IQR', val: stats.iqr !== null ? `${stats.iqr}%` : '—' },
+    { label: 'Avg Duration', val: stats.averageDurationMinutes !== null ? `${stats.averageDurationMinutes}m` : '—' },
+    { label: 'Median Duration', val: stats.medianDurationMinutes !== null ? `${stats.medianDurationMinutes}m` : '—' }
+  ];
+
+  metrics.forEach((m) => {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:#fff;padding:10px 12px;border:1px solid var(--line);border-radius:6px';
+    card.innerHTML = `
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600">${m.label}</div>
+      <div style="font-size:16px;font-weight:700;margin-top:2px">${m.val}</div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function loadExamCandidatesView() {
+  if (!currentAnalyticsExamId) return;
+  const tbody = document.getElementById('examCandidatesBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">Loading candidates list...</td></tr>';
+
+  const status = document.getElementById('candidateStatusFilter')?.value || 'all';
+  const sort = document.getElementById('candidateSortFilter')?.value || 'score_desc';
+  const search = document.getElementById('candidateSearchInput')?.value || '';
+
+  const params = new URLSearchParams({
+    page: currentCandidatePage,
+    limit: 20
+  });
+  if (status !== 'all') params.append('status', status);
+  if (sort) params.append('sort', sort);
+  if (search) params.append('search', search);
+
+  const res = await aapi(`/api/organization/exams/${currentAnalyticsExamId}/analytics/candidates?${params.toString()}`);
+  if (!res.success || !res.data) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--danger);padding:20px">Failed to load candidates</td></tr>';
+    return;
+  }
+
+  const { candidates, pagination } = res.data;
+  const infoEl = document.getElementById('candidatePaginationInfo');
+  const prevBtn = document.getElementById('candidatePrevBtn');
+  const nextBtn = document.getElementById('candidateNextBtn');
+  const pageEl = document.getElementById('candidateCurrentPage');
+
+  if (infoEl) infoEl.textContent = `Showing ${candidates.length} of ${pagination.total} candidates`;
+  if (pageEl) pageEl.textContent = `Page ${pagination.page} of ${pagination.totalPages}`;
+  if (prevBtn) prevBtn.disabled = (pagination.page <= 1);
+  if (nextBtn) nextBtn.disabled = (pagination.page >= pagination.totalPages);
+
+  if (candidates.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No candidates found matching the filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  candidates.forEach((c) => {
+    const tr = document.createElement('tr');
+    const resultBadge = c.passed
+      ? '<span class="status-badge status-live" style="background:#ECFDF5;color:#059669">Passed</span>'
+      : (c.latestStatus === 'submitted' ? '<span class="status-badge status-draft" style="background:#FEF2F2;color:#DC2626">Failed</span>' : '<span style="color:var(--muted)">Pending</span>');
+
+    tr.innerHTML = `
+      <td>
+        <strong>${escapeHtml(c.name || 'Anonymous')}</strong>
+        <div style="font-size:11px;color:var(--muted)">${escapeHtml(c.email || '')}</div>
+      </td>
+      <td>${escapeHtml(c.college || '—')}</td>
+      <td>${c.attemptCount}</td>
+      <td><span class="status-badge status-${(c.latestStatus || 'started').toLowerCase()}">${c.latestStatus}</span></td>
+      <td>${c.score !== null ? c.score : '—'} / ${c.totalMarks || '—'}</td>
+      <td><strong>${c.percentage !== null ? `${c.percentage}%` : '—'}</strong></td>
+      <td>${c.scholarshipPct > 0 ? `<strong style="color:#059669">${c.scholarshipPct}%</strong>` : '—'}</td>
+      <td>${resultBadge}</td>
+      <td><span style="font-size:12px;color:var(--muted)">${c.lastSubmittedAt ? new Date(c.lastSubmittedAt).toLocaleDateString() : '—'}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Utility: debounce
+function debounce(fn, delay = 300) {
+  let timer = null;
+  return function(...args) {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// Back to Exams button
+document.getElementById('backToExamsBtn')?.addEventListener('click', () => {
+  destroyAllExamAnalyticsCharts();
+  switchTab('exams');
+});
+
+// Refresh button
+document.getElementById('analyticsRefreshBtn')?.addEventListener('click', () => {
+  loadCurrentExamAnalytics();
+});
+
+// Period change
+document.getElementById('analyticsPeriodSelect')?.addEventListener('change', () => {
+  loadCurrentExamAnalytics();
+});
+
+// Section navigation pills
+document.querySelectorAll('.analytics-nav-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    showAnalyticsSubSec(btn.dataset.sec);
+    loadCurrentExamAnalytics();
+  });
+});
+
+// Question filters
+document.getElementById('qAnalyticsTypeFilter')?.addEventListener('change', loadExamQuestionsView);
+document.getElementById('qAnalyticsDifficultyFilter')?.addEventListener('change', loadExamQuestionsView);
+document.getElementById('qAnalyticsSortFilter')?.addEventListener('change', loadExamQuestionsView);
+document.getElementById('qAnalyticsSearch')?.addEventListener('input', debounce(loadExamQuestionsView, 300));
+
+// Candidate filters & pagination
+document.getElementById('candidateStatusFilter')?.addEventListener('change', () => {
+  currentCandidatePage = 1;
+  loadExamCandidatesView();
+});
+document.getElementById('candidateSortFilter')?.addEventListener('change', () => {
+  currentCandidatePage = 1;
+  loadExamCandidatesView();
+});
+document.getElementById('candidateSearchInput')?.addEventListener('input', debounce(() => {
+  currentCandidatePage = 1;
+  loadExamCandidatesView();
+}, 300));
+
+document.getElementById('candidatePrevBtn')?.addEventListener('click', () => {
+  if (currentCandidatePage > 1) {
+    currentCandidatePage--;
+    loadExamCandidatesView();
+  }
+});
+
+document.getElementById('candidateNextBtn')?.addEventListener('click', () => {
+  currentCandidatePage++;
+  loadExamCandidatesView();
+});
+
 
 // Initial boot
 gate();

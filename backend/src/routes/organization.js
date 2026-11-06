@@ -13,12 +13,20 @@ const orgService = require('../services/organization.service');
 const invitationService = require('../services/invitation.service');
 const { storageService } = require('../services/storage.service');
 const dashboardService = require('../services/dashboard-analytics.service');
+const examAnalyticsService = require('../services/exam-analytics.service');
 
 const {
   updateOrganizationProfileSchema,
   inviteAdminSchema
 } = require('../validation/organization.schemas');
 const { dashboardFilterSchema } = require('../validation/dashboard.schemas');
+const {
+  examIdParamSchema,
+  questionAnalyticsParamSchema,
+  examAnalyticsFilterSchema,
+  examCandidatesFilterSchema,
+  examQuestionsFilterSchema
+} = require('../validation/exam-analytics.schemas');
 
 // Memory storage for file uploads (max 2MB)
 const upload = multer({
@@ -362,5 +370,156 @@ router.get('/dashboard/completion-rate', requirePermission(PERMISSIONS.ANALYTICS
     next(err);
   }
 });
+
+// ============================================================================
+// DAY 19: EXAM-LEVEL ANALYTICS ROUTES
+// ============================================================================
+
+/**
+ * GET /api/organization/exams/:examId/analytics/overview
+ * Returns candidate funnel and high-level exam performance KPIs.
+ */
+router.get(
+  '/exams/:examId/analytics/overview',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: examIdParamSchema, query: examAnalyticsFilterSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const data = examAnalyticsService.getExamOverview(req.params.examId, orgId, req.query, isSuperAdmin);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/exams/:examId/analytics/candidates
+ * Returns candidate funnel, retake statistics, and candidate status list.
+ */
+router.get(
+  '/exams/:examId/analytics/candidates',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: examIdParamSchema, query: examCandidatesFilterSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const data = examAnalyticsService.getExamCandidates(req.params.examId, orgId, req.query, isSuperAdmin);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/exams/:examId/analytics/questions
+ * Returns psychometric question analytics, difficulty ratings, and Kelley's discrimination indices.
+ */
+router.get(
+  '/exams/:examId/analytics/questions',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: examIdParamSchema, query: examQuestionsFilterSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const data = examAnalyticsService.getExamQuestions(req.params.examId, orgId, req.query, isSuperAdmin);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/exams/:examId/analytics/questions/:questionId
+ * Returns detailed analytics for a single question including MCQ option selection or coding test case breakdown.
+ */
+router.get(
+  '/exams/:examId/analytics/questions/:questionId',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: questionAnalyticsParamSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const data = examAnalyticsService.getQuestionDetail(req.params.examId, req.params.questionId, orgId, isSuperAdmin);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/exams/:examId/analytics/coding
+ * Returns coding question execution analytics, error categorizations, and test case pass rates.
+ */
+router.get(
+  '/exams/:examId/analytics/coding',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: examIdParamSchema, query: examAnalyticsFilterSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const data = examAnalyticsService.getExamCodingAnalytics(req.params.examId, orgId, req.query, isSuperAdmin);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/exams/:examId/analytics/performance
+ * Returns score distribution buckets, completion duration distribution, and simple-statistics metrics.
+ */
+router.get(
+  '/exams/:examId/analytics/performance',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: examIdParamSchema, query: examAnalyticsFilterSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const data = examAnalyticsService.getExamPerformance(req.params.examId, orgId, req.query, isSuperAdmin);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/exams/:examId/analytics
+ * Convenience endpoint returning overview for the exam.
+ */
+router.get(
+  '/exams/:examId/analytics',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: examIdParamSchema, query: examAnalyticsFilterSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const data = examAnalyticsService.getExamOverview(req.params.examId, orgId, req.query, isSuperAdmin);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 module.exports = router;

@@ -39,7 +39,15 @@ const { recordAuditEvent } = require('../services/audit.service');
 const proctoringRiskService = require('../services/proctoring-risk.service');
 const timerSubmissionService = require('../services/timer-submission.service');
 const dashboardService = require('../services/dashboard-analytics.service');
+const examAnalyticsService = require('../services/exam-analytics.service');
 const { dashboardFilterSchema } = require('../validation/dashboard.schemas');
+const {
+  examIdParamSchema,
+  questionAnalyticsParamSchema,
+  examAnalyticsFilterSchema,
+  examCandidatesFilterSchema,
+  examQuestionsFilterSchema
+} = require('../validation/exam-analytics.schemas');
 const metrics = require('../utils/metrics');
 const {
   createExamSchema,
@@ -391,6 +399,63 @@ router.get('/exams/:id', requirePermission(PERMISSIONS.EXAMS_READ), validate({ p
   const exam = examService.getExamById(req.params.id, req.user);
   res.json({ success: true, data: exam });
 });
+
+/**
+ * GET /api/admin/exams/:id/analytics
+ * Platform-wide / super-admin analytical inspection of an exam (Day 19).
+ */
+router.get(
+  '/exams/:id/analytics',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: idParamSchema, query: examAnalyticsFilterSchema }),
+  (req, res, next) => {
+    try {
+      const examId = req.params.id;
+      const section = req.query.section || 'all';
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const orgId = req.user.organization_id;
+
+      if (section === 'overview') {
+        const data = examAnalyticsService.getExamOverview(examId, orgId, req.query, isSuperAdmin);
+        return res.json({ success: true, data });
+      }
+      if (section === 'candidates') {
+        const data = examAnalyticsService.getExamCandidates(examId, orgId, req.query, isSuperAdmin);
+        return res.json({ success: true, data });
+      }
+      if (section === 'questions') {
+        const data = examAnalyticsService.getExamQuestions(examId, orgId, req.query, isSuperAdmin);
+        return res.json({ success: true, data });
+      }
+      if (section === 'coding') {
+        const data = examAnalyticsService.getExamCodingAnalytics(examId, orgId, req.query, isSuperAdmin);
+        return res.json({ success: true, data });
+      }
+      if (section === 'performance') {
+        const data = examAnalyticsService.getExamPerformance(examId, orgId, req.query, isSuperAdmin);
+        return res.json({ success: true, data });
+      }
+
+      // Default: combined full analytics payload
+      const overview = examAnalyticsService.getExamOverview(examId, orgId, req.query, isSuperAdmin);
+      const questions = examAnalyticsService.getExamQuestions(examId, orgId, req.query, isSuperAdmin);
+      const coding = examAnalyticsService.getExamCodingAnalytics(examId, orgId, req.query, isSuperAdmin);
+      const performance = examAnalyticsService.getExamPerformance(examId, orgId, req.query, isSuperAdmin);
+
+      res.json({
+        success: true,
+        data: {
+          overview,
+          questions,
+          coding,
+          performance
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // 4. Update exam basic details & settings (optimistic concurrency enabled)
 router.put('/exams/:id', requirePermission(PERMISSIONS.EXAMS_UPDATE), validate({ params: idParamSchema, body: updateExamSchema }), (req, res) => {
