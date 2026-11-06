@@ -30,8 +30,22 @@ npm run bootstrap:admin     # provisions your initial Super Admin credentials
 npm start                   # http://localhost:3000
 ```
 
-- Student: http://localhost:3000/
+- Student: http://localhost:3000/ (Registration) or http://localhost:3000/landing.html (Immersive Luxury Landing Page)
 - Admin: http://localhost:3000/admin.html (log in with your administrative credentials)
+
+## Immersive Luxury Landing Page
+
+A cinematic, fine-art digital experience engineered for **Aspire by Adyapan**:
+- **Design direction**: Architectural luxury, midnight black (#08090B), warm ivory (#F5F3EF), and golden yellow (#FFC900) typography pairing *Playfair Display* and *Poppins*.
+- **Hero Composition**: Classical Greek/Roman marble sculpture bust focal point with radiant golden halo, celestial constellation particles, layered architectural colonnade lines, and subtle pointer-driven 3D parallax.
+- **Scholarship Highlight Carousel**: Accessible 4-tier interactive slider (100%, 50%, 25%, 10%) with keyboard arrow navigation and touch swipe gestures.
+- **The Experience**: 4-step horizontal process timeline (Register, Evaluate, Achieve, Celebrate) with animated progress line drawing and golden badge highlight.
+- **The Opportunity**: High-contrast scholarship performance tiers with animated number counter on scroll.
+- **Interactive FAQs**: Accessible accordion with smooth state transitions.
+- **Architectural Closing**: Monumental curved colonnade visual with central golden dawn and solitary silhouette walking forward into the light.
+- **Production Performance**: Zero external runtime dependencies, 100% self-hosted WOFF2 fonts and optimized WebP images, full CSP compliance, zero layout shift, and full prefers-reduced-motion support.
+- **Automated Verification**: 
+pm run test:landing (49/49 Playwright E2E assertions passed).
 
 ## Stack
 

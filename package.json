@@ -28,6 +28,7 @@
     "test:day18": "npm run test:dashboard",
     "test:exam-analytics": "node test/exam-analytics.test.js && node test/exam-question-analytics.test.js && node test/exam-coding-analytics.test.js && node test/exam-analytics-security.test.js && node test/exam-analytics-statistics.test.js",
     "test:day19": "npm run test:exam-analytics",
+    "test:landing": "node test/landing-page.test.js",
     "test:unit": "node test/unit.test.js",
     "test:integration": "node test/integration.test.js",
     "test:api": "node test/api.test.js",

@@ -10,10 +10,10 @@ function securityHeaders() {
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "'unsafe-inline'"], // Needed for instructions page & local client config
-        styleSrc: ["'self'", "'unsafe-inline'"],  // Needed for dynamic inline color tokens & UI states
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],  // Needed for dynamic inline color tokens & UI states, plus optional font CDN
         imgSrc: ["'self'", 'data:'],
         connectSrc: ["'self'"],
-        fontSrc: ["'self'"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"], // Defends against clickjacking
         baseUri: ["'self'"],
