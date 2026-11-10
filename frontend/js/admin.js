@@ -101,6 +101,8 @@ function applyRoleAwareUI() {
   document.getElementById('tab-config').style.display = canConfig ? 'inline-block' : 'none';
   document.getElementById('tab-results').style.display = canResults ? 'inline-block' : 'none';
   document.getElementById('tab-report').style.display = canAnalytics ? 'inline-block' : 'none';
+  const reportsTab = document.getElementById('tab-reports');
+  if (reportsTab) reportsTab.style.display = (canAnalytics || canResults) ? 'inline-block' : 'none';
   document.getElementById('tab-users').style.display = canUsers ? 'inline-block' : 'none';
 
   // Organizations tab (Platform SUPER_ADMIN only)
@@ -217,6 +219,7 @@ function switchTab(name) {
   if (name === 'users') loadUsers();
   if (name === 'organizations') loadOrganizations();
   if (name === 'branding') loadOrgBranding();
+  if (name === 'reports') loadReports();
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
@@ -3630,6 +3633,655 @@ document.getElementById('candidatePrevBtn')?.addEventListener('click', () => {
 document.getElementById('candidateNextBtn')?.addEventListener('click', () => {
   currentCandidatePage++;
   loadExamCandidatesView();
+});
+
+
+// ============================================================================
+// DAY 20: REPORTING SYSTEM & INSTITUTIONAL INSIGHTS
+// ============================================================================
+let activeReportType = 'candidates';
+let repCurrentPage = 1;
+let repCurrentLimit = 25;
+let repTotalPages = 1;
+let repReportOptionsLoaded = false;
+
+async function loadReports() {
+  if (!repReportOptionsLoaded) {
+    await initReportControls();
+  }
+  await fetchAndRenderReportPreview();
+}
+
+async function initReportControls() {
+  try {
+    const isSuper = (currentUser && currentUser.role === 'SUPER_ADMIN');
+    const endpoint = isSuper ? '/api/admin/reports' : '/api/organization/reports';
+    const res = await aapi(endpoint);
+    const data = res.data || res;
+
+    // Populate exams dropdown
+    const examSelect = document.getElementById('rep_exam');
+    if (examSelect && data.exams) {
+      examSelect.innerHTML = '<option value="">All Exams</option>' +
+        data.exams.map((e) => `<option value="${e.id}">${esc(e.title || e.name || 'Exam #' + e.id)}</option>`).join('');
+    }
+
+    repReportOptionsLoaded = true;
+  } catch (err) {
+    console.warn('Could not pre-load reporting options:', err);
+  }
+
+  // Bind category button clicks
+  document.querySelectorAll('.rep-type-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.rep-type-btn').forEach((b) => {
+        b.classList.remove('active');
+        b.style.background = 'transparent';
+        b.style.color = 'var(--color-midnight)';
+        b.style.fontWeight = '500';
+      });
+      btn.classList.add('active');
+      btn.style.background = 'var(--color-midnight)';
+      btn.style.color = 'var(--color-gold)';
+      btn.style.fontWeight = '600';
+
+      activeReportType = btn.dataset.report;
+      updateFilterVisibility(activeReportType);
+      repCurrentPage = 1;
+      fetchAndRenderReportPreview();
+    });
+  });
+
+  // Bind period change
+  const periodSel = document.getElementById('rep_period');
+  if (periodSel) {
+    periodSel.addEventListener('change', () => {
+      const customWrap = document.getElementById('rep_custom_date_wrap');
+      if (customWrap) {
+        customWrap.style.display = periodSel.value === 'custom' ? 'block' : 'none';
+      }
+    });
+  }
+
+  // Bind Apply & Reset
+  document.getElementById('rep_apply_btn')?.addEventListener('click', () => {
+    repCurrentPage = 1;
+    fetchAndRenderReportPreview();
+  });
+
+  document.getElementById('rep_reset_btn')?.addEventListener('click', () => {
+    resetReportFilters();
+    repCurrentPage = 1;
+    fetchAndRenderReportPreview();
+  });
+
+  // Bind Page Limit
+  document.getElementById('rep_page_limit')?.addEventListener('change', (e) => {
+    repCurrentLimit = parseInt(e.target.value, 10) || 25;
+    repCurrentPage = 1;
+    fetchAndRenderReportPreview();
+  });
+
+  // Bind Pagination Prev / Next
+  document.getElementById('rep_prev_btn')?.addEventListener('click', () => {
+    if (repCurrentPage > 1) {
+      repCurrentPage--;
+      fetchAndRenderReportPreview();
+    }
+  });
+
+  document.getElementById('rep_next_btn')?.addEventListener('click', () => {
+    if (repCurrentPage < repTotalPages) {
+      repCurrentPage++;
+      fetchAndRenderReportPreview();
+    }
+  });
+
+  // Bind Exports
+  document.getElementById('rep_export_csv_btn')?.addEventListener('click', () => triggerReportExport('csv'));
+  document.getElementById('rep_export_excel_btn')?.addEventListener('click', () => triggerReportExport('xlsx'));
+  document.getElementById('rep_export_pdf_btn')?.addEventListener('click', () => triggerReportExport('pdf'));
+}
+
+function updateFilterVisibility(reportType) {
+  const riskWrap = document.getElementById('rep_risk_wrap');
+  const diffWrap = document.getElementById('rep_diff_wrap');
+  const scoreWrap = document.getElementById('rep_score_wrap');
+  const scholarshipWrap = document.getElementById('rep_scholarship_wrap');
+  const collegeWrap = document.getElementById('rep_college_wrap');
+
+  if (riskWrap) riskWrap.style.display = reportType === 'proctoring' ? 'block' : 'none';
+  if (diffWrap) diffWrap.style.display = reportType === 'questions' ? 'block' : 'none';
+  if (scoreWrap) scoreWrap.style.display = (reportType === 'candidates' || reportType === 'colleges' || reportType === 'scholarships') ? 'block' : 'none';
+  if (scholarshipWrap) scholarshipWrap.style.display = (reportType === 'candidates' || reportType === 'scholarships') ? 'block' : 'none';
+  if (collegeWrap) collegeWrap.style.display = reportType !== 'questions' ? 'block' : 'none';
+}
+
+function collectReportFilters() {
+  const filters = {
+    period: document.getElementById('rep_period')?.value || 'all',
+    search: document.getElementById('rep_search')?.value.trim() || undefined,
+    exam_id: document.getElementById('rep_exam')?.value || undefined,
+    college: document.getElementById('rep_college')?.value.trim() || undefined,
+    min_score: document.getElementById('rep_min_score')?.value !== '' ? document.getElementById('rep_min_score').value : undefined,
+    max_score: document.getElementById('rep_max_score')?.value !== '' ? document.getElementById('rep_max_score').value : undefined,
+    scholarship_pct: document.getElementById('rep_scholarship')?.value !== '' ? document.getElementById('rep_scholarship').value : undefined,
+    risk_level: document.getElementById('rep_risk_level')?.value || undefined,
+    difficulty: document.getElementById('rep_difficulty')?.value || undefined,
+    page: repCurrentPage,
+    limit: repCurrentLimit
+  };
+
+  if (filters.period === 'custom') {
+    filters.start_date = document.getElementById('rep_start_date')?.value || undefined;
+    filters.end_date = document.getElementById('rep_end_date')?.value || undefined;
+  }
+
+  // Strip empty/undefined
+  const cleaned = {};
+  for (const [k, v] of Object.entries(filters)) {
+    if (v !== undefined && v !== null && v !== '') cleaned[k] = v;
+  }
+  return cleaned;
+}
+
+function resetReportFilters() {
+  if (document.getElementById('rep_period')) document.getElementById('rep_period').value = 'all';
+  if (document.getElementById('rep_start_date')) document.getElementById('rep_start_date').value = '';
+  if (document.getElementById('rep_end_date')) document.getElementById('rep_end_date').value = '';
+  if (document.getElementById('rep_custom_date_wrap')) document.getElementById('rep_custom_date_wrap').style.display = 'none';
+  if (document.getElementById('rep_exam')) document.getElementById('rep_exam').value = '';
+  if (document.getElementById('rep_college')) document.getElementById('rep_college').value = '';
+  if (document.getElementById('rep_min_score')) document.getElementById('rep_min_score').value = '';
+  if (document.getElementById('rep_max_score')) document.getElementById('rep_max_score').value = '';
+  if (document.getElementById('rep_scholarship')) document.getElementById('rep_scholarship').value = '';
+  if (document.getElementById('rep_risk_level')) document.getElementById('rep_risk_level').value = '';
+  if (document.getElementById('rep_difficulty')) document.getElementById('rep_difficulty').value = 'ALL';
+  if (document.getElementById('rep_search')) document.getElementById('rep_search').value = '';
+}
+
+async function fetchAndRenderReportPreview() {
+  const tbody = document.getElementById('rep_table_body');
+  const thead = document.getElementById('rep_table_hd');
+  const kpiContainer = document.getElementById('rep_kpi_cards');
+  const badge = document.getElementById('rep_records_badge');
+  const titleEl = document.getElementById('rep_table_title');
+
+  if (tbody) tbody.innerHTML = '<tr><td colspan="12" style="padding:40px;text-align:center;color:var(--color-text-secondary)">Loading report data...</td></tr>';
+
+  try {
+    const isSuper = (currentUser && currentUser.role === 'SUPER_ADMIN');
+    const baseRoute = isSuper ? `/api/admin/reports/${activeReportType}` : `/api/organization/reports/${activeReportType}`;
+
+    const filters = collectReportFilters();
+    const queryParams = new URLSearchParams(filters).toString();
+    const url = `${baseRoute}?${queryParams}`;
+
+    const res = await aapi(url);
+    const data = res.data || res;
+
+    // Render Title & Badge
+    if (titleEl) titleEl.textContent = data.title || `${activeReportType.toUpperCase()} Report Preview`;
+    if (badge) badge.textContent = `${(data.pagination && data.pagination.totalRecords) || data.records.length} records`;
+
+    // Render KPI Summary Cards
+    if (kpiContainer && data.summary) {
+      kpiContainer.innerHTML = Object.entries(data.summary).map(([k, v]) => {
+        const label = k.replace(/_/g, ' ').toUpperCase();
+        return `
+          <div class="card" style="background:#FFFFFF;border:1px solid var(--color-light-border);border-left:3px solid var(--color-gold);border-radius:8px;padding:14px">
+            <span style="font-size:0.7rem;font-weight:600;color:var(--color-text-secondary);display:block;margin-bottom:4px">${esc(label)}</span>
+            <span style="font-family:var(--font-display);font-size:1.5rem;font-weight:700;color:var(--color-midnight)">${v !== null && v !== undefined ? esc(String(v)) : '0'}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Render Table Columns (Header)
+    if (thead && data.columns) {
+      thead.innerHTML = data.columns.map((c) => `
+        <th style="padding:12px 14px;font-weight:600;font-size:0.75rem;letter-spacing:0.04em;text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,0.1)">${esc(c.label)}</th>
+      `).join('');
+    }
+
+    // Render Table Records (Body)
+    if (tbody) {
+      if (!data.records || data.records.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="12" style="padding:40px;text-align:center;color:var(--color-text-secondary)">No records match the current filters.</td></tr>';
+      } else {
+        tbody.innerHTML = data.records.map((row, rIdx) => {
+          const bg = rIdx % 2 === 1 ? 'background:rgba(8,9,11,0.02);' : '';
+          const cells = data.columns.map((col) => {
+            const rawVal = row[col.key];
+            const textVal = rawVal !== undefined && rawVal !== null ? String(rawVal) : '—';
+            let formatted = esc(textVal);
+
+            // Visual badges for status/risk
+            if (col.key === 'risk_classification') {
+              let badgeColor = 'background:#E5E7EB;color:#374151';
+              if (textVal === 'WARNING') badgeColor = 'background:#FEF3C7;color:#92400E';
+              else if (textVal === 'SUSPICIOUS') badgeColor = 'background:#FDE68A;color:#B45309';
+              else if (textVal === 'HIGH_RISK') badgeColor = 'background:#FEE2E2;color:#991B1B';
+              formatted = `<span style="${badgeColor};padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600">${textVal}</span>`;
+            } else if (col.key === 'certificate_status' || col.key === 'verification_status') {
+              const isIssued = textVal === 'ISSUED' || textVal === 'VERIFIED' || textVal === 'AWARDED';
+              formatted = `<span style="background:${isIssued ? 'rgba(24,122,75,0.1)' : 'rgba(8,9,11,0.06)'};color:${isIssued ? 'var(--color-success)' : 'var(--color-text-secondary)'};padding:2px 8px;border-radius:12px;font-size:0.75rem;font-weight:600">${textVal}</span>`;
+            }
+
+            return `<td style="padding:10px 14px;border-bottom:1px solid var(--color-light-border)">${formatted}</td>`;
+          }).join('');
+
+          return `<tr style="${bg}">${cells}</tr>`;
+        }).join('');
+      }
+    }
+
+    // Update Pagination controls
+    if (data.pagination) {
+      repCurrentPage = data.pagination.page;
+      repTotalPages = data.pagination.totalPages;
+
+      const pageInfo = document.getElementById('rep_page_info');
+      if (pageInfo) pageInfo.textContent = `Page ${repCurrentPage} of ${repTotalPages || 1}`;
+
+      const prevBtn = document.getElementById('rep_prev_btn');
+      if (prevBtn) prevBtn.disabled = !data.pagination.hasPrev;
+
+      const nextBtn = document.getElementById('rep_next_btn');
+      if (nextBtn) nextBtn.disabled = !data.pagination.hasNext;
+    }
+  } catch (err) {
+    if (tbody) tbody.innerHTML = `<tr><td colspan="12" style="padding:30px;text-align:center;color:var(--color-danger)">Error loading report: ${esc(err.message || String(err))}</td></tr>`;
+  }
+}
+
+async function triggerReportExport(format) {
+  const statusEl = document.getElementById('rep_export_status');
+  const btnId = `rep_export_${format === 'xlsx' ? 'excel' : format}_btn`;
+  const exportBtn = document.getElementById(btnId);
+  const origText = exportBtn ? exportBtn.innerHTML : '';
+
+  try {
+    if (exportBtn) {
+      exportBtn.disabled = true;
+      exportBtn.innerHTML = `<span>Exporting...</span>`;
+    }
+    if (statusEl) {
+      statusEl.style.display = 'inline-block';
+      statusEl.style.color = 'var(--color-text-secondary)';
+      statusEl.textContent = `Generating ${format.toUpperCase()} export...`;
+    }
+
+    const isSuper = (currentUser && currentUser.role === 'SUPER_ADMIN');
+    const baseRoute = isSuper ? `/api/admin/reports/${activeReportType}/export` : `/api/organization/reports/${activeReportType}/export`;
+
+    const filters = collectReportFilters();
+    filters.format = format;
+    filters.limit = 10000;
+    const queryParams = new URLSearchParams(filters).toString();
+    const url = `${baseRoute}?${queryParams}`;
+
+    const token = getAuthToken();
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    });
+
+    if (!response.ok) {
+      let errMsg = 'Export generation failed';
+      try {
+        const errJson = await response.json();
+        errMsg = errJson.message || errMsg;
+      } catch {}
+      throw new Error(errMsg);
+    }
+
+    // Determine filename from Content-Disposition header
+    let filename = `aspire-${activeReportType}-report.${format}`;
+    const disp = response.headers.get('Content-Disposition');
+    if (disp && disp.includes('filename=')) {
+      const match = disp.match(/filename="?([^"]+)"?/);
+      if (match && match[1]) filename = match[1];
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
+
+    if (statusEl) {
+      statusEl.style.color = 'var(--color-success)';
+      statusEl.textContent = `Downloaded ${filename}`;
+      setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 4000);
+    }
+  } catch (err) {
+    if (statusEl) {
+      statusEl.style.color = 'var(--color-danger)';
+      statusEl.textContent = `Export failed: ${err.message}`;
+    }
+  } finally {
+    if (exportBtn) {
+      exportBtn.disabled = false;
+      exportBtn.innerHTML = origText;
+    }
+  }
+}
+
+
+// ============================================================================
+// ASPIRE DAY 21: SUBSCRIPTION, USAGE & QUOTA FRONTEND ENGINE
+// ============================================================================
+
+let currentSubscriptionData = null;
+
+async function loadSubscription() {
+  try {
+    const orgId = currentUser && currentUser.organization_id;
+    let url = '/api/organization/usage';
+
+    const res = await aapi(url);
+    const data = res.data || {};
+    currentSubscriptionData = data;
+
+    renderSubscriptionUI(data);
+
+    // Also load plans for comparison grid
+    loadPlansComparison();
+  } catch (err) {
+    console.error('Failed to load subscription:', err);
+  }
+}
+
+function renderSubscriptionUI(data) {
+  const plan = data.plan || {};
+  const sub = data.subscription || {};
+  const resources = data.resources || {};
+  const features = data.features || [];
+
+  // 1. Current Plan Card
+  const planNameEl = document.getElementById('subPlanName');
+  if (planNameEl) planNameEl.textContent = plan.name || 'Enterprise Plan';
+
+  const statusBadge = document.getElementById('subStatusBadge');
+  if (statusBadge) {
+    const status = sub.status || 'ACTIVE';
+    statusBadge.textContent = status;
+    statusBadge.className = 'status-badge ' + (status === 'ACTIVE' ? 'active' : (status === 'TRIAL' ? 'draft' : 'danger'));
+  }
+
+  const startEl = document.getElementById('subPeriodStart');
+  if (startEl) startEl.textContent = sub.currentPeriodStart ? new Date(sub.currentPeriodStart).toLocaleDateString() : 'N/A';
+
+  const endEl = document.getElementById('subPeriodEnd');
+  if (endEl) endEl.textContent = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : 'Continuous';
+
+  const descEl = document.getElementById('subPlanDesc');
+  if (descEl) descEl.textContent = plan.description || 'Full platform capabilities and enterprise quotas.';
+
+  // Feature pills
+  const featContainer = document.getElementById('subFeaturesList');
+  if (featContainer) {
+    featContainer.innerHTML = '';
+    const featureLabels = {
+      BASIC_ANALYTICS: 'Basic Analytics',
+      ADVANCED_ANALYTICS: 'Advanced Analytics',
+      STANDARD_ASSESSMENT: 'Assessments',
+      CERTIFICATES: 'Certificates',
+      PROCTORING: 'Proctoring Telemetry',
+      CUSTOM_BRANDING: 'Custom Branding',
+      PRIORITY_SUPPORT: 'Priority Support',
+      DEDICATED_INFRASTRUCTURE: 'Dedicated Infra',
+      CUSTOM_INTEGRATIONS: 'Custom Integrations'
+    };
+
+    features.forEach((f) => {
+      const pill = document.createElement('span');
+      pill.style.cssText = 'background:#FAF8F5;border:1px solid #E2E8F0;padding:4px 10px;border-radius:15px;font-size:0.75rem;font-weight:600;color:var(--color-navy);display:inline-flex;align-items:center;gap:4px';
+      pill.innerHTML = `<span style="color:var(--color-gold)">&#10003;</span> ${featureLabels[f] || f}`;
+      featContainer.appendChild(pill);
+    });
+  }
+
+  // 2. Resource Metering Cards
+  const examsRes = resources.exams_monthly || { used: 0, quota: 3, percentage: 0 };
+  const candRes = resources.candidates || { used: 0, quota: 500, percentage: 0 };
+
+  // Exams
+  const exUsedEl = document.getElementById('usageExamsUsed');
+  const exQuotaEl = document.getElementById('usageExamsQuota');
+  const exRemEl = document.getElementById('remainingExams');
+  const exPctEl = document.getElementById('pctExams');
+  const exBar = document.getElementById('progressExams');
+  const exBadge = document.getElementById('badgeExamsStatus');
+
+  if (exUsedEl) exUsedEl.textContent = examsRes.used;
+  if (exQuotaEl) exQuotaEl.textContent = examsRes.isUnlimited ? 'Unlimited' : examsRes.quota;
+  if (exRemEl) exRemEl.textContent = examsRes.isUnlimited ? 'Unlimited' : examsRes.remaining;
+  if (exPctEl) exPctEl.textContent = examsRes.isUnlimited ? 'N/A' : `${examsRes.percentage}%`;
+  if (exBar) {
+    exBar.style.width = `${Math.min(100, examsRes.percentage)}%`;
+    exBar.style.background = examsRes.isExceeded ? 'var(--color-danger)' : (examsRes.isWarning ? 'var(--color-gold)' : 'var(--color-navy)');
+  }
+  if (exBadge) {
+    if (examsRes.isExceeded) {
+      exBadge.textContent = 'LIMIT REACHED';
+      exBadge.className = 'status-badge danger';
+    } else if (examsRes.isWarning) {
+      exBadge.textContent = 'WARNING';
+      exBadge.className = 'status-badge draft';
+    } else {
+      exBadge.textContent = 'NORMAL';
+      exBadge.className = 'status-badge active';
+    }
+  }
+
+  // Candidates
+  const candUsedEl = document.getElementById('usageCandidatesUsed');
+  const candQuotaEl = document.getElementById('usageCandidatesQuota');
+  const candRemEl = document.getElementById('remainingCandidates');
+  const candPctEl = document.getElementById('pctCandidates');
+  const candBar = document.getElementById('progressCandidates');
+  const candBadge = document.getElementById('badgeCandidatesStatus');
+
+  if (candUsedEl) candUsedEl.textContent = candRes.used;
+  if (candQuotaEl) candQuotaEl.textContent = candRes.isUnlimited ? 'Unlimited' : candRes.quota;
+  if (candRemEl) candRemEl.textContent = candRes.isUnlimited ? 'Unlimited' : candRes.remaining;
+  if (candPctEl) candPctEl.textContent = candRes.isUnlimited ? 'N/A' : `${candRes.percentage}%`;
+  if (candBar) {
+    candBar.style.width = `${Math.min(100, candRes.percentage)}%`;
+    candBar.style.background = candRes.isExceeded ? 'var(--color-danger)' : (candRes.isWarning ? 'var(--color-gold)' : 'var(--color-navy)');
+  }
+  if (candBadge) {
+    if (candRes.isExceeded) {
+      candBadge.textContent = 'LIMIT REACHED';
+      candBadge.className = 'status-badge danger';
+    } else if (candRes.isWarning) {
+      candBadge.textContent = 'WARNING';
+      candBadge.className = 'status-badge draft';
+    } else {
+      candBadge.textContent = 'NORMAL';
+      candBadge.className = 'status-badge active';
+    }
+  }
+
+  // 3. Alert Banner
+  const alertBanner = document.getElementById('quotaAlertBanner');
+  const alertTitle = document.getElementById('quotaAlertTitle');
+  const alertMsg = document.getElementById('quotaAlertMsg');
+  const alertIcon = document.getElementById('quotaAlertIcon');
+
+  if (alertBanner) {
+    if (examsRes.isExceeded || candRes.isExceeded) {
+      alertBanner.style.display = 'flex';
+      alertBanner.style.background = '#FEE2E2';
+      alertBanner.style.border = '1px solid #EF4444';
+      alertBanner.style.color = '#991B1B';
+      if (alertIcon) alertIcon.textContent = '🚫';
+      if (alertTitle) alertTitle.textContent = 'Plan Limit Exceeded';
+      const exceededNames = [];
+      if (examsRes.isExceeded) exceededNames.push('monthly exams');
+      if (candRes.isExceeded) exceededNames.push('candidates');
+      if (alertMsg) alertMsg.textContent = `You have reached the maximum quota for ${exceededNames.join(' and ')}. Please upgrade to restore full functionality.`;
+    } else if (examsRes.isWarning || candRes.isWarning) {
+      alertBanner.style.display = 'flex';
+      alertBanner.style.background = '#FEF3C7';
+      alertBanner.style.border = '1px solid #F59E0B';
+      alertBanner.style.color = '#92400E';
+      if (alertIcon) alertIcon.textContent = '⚠️';
+      if (alertTitle) alertTitle.textContent = 'Approaching Quota Limit';
+      const warningNames = [];
+      if (examsRes.isWarning) warningNames.push(`monthly exams (${examsRes.percentage}%)`);
+      if (candRes.isWarning) warningNames.push(`candidates (${candRes.percentage}%)`);
+      if (alertMsg) alertMsg.textContent = `Your institution has reached the warning threshold for ${warningNames.join(', ')}.`;
+    } else {
+      alertBanner.style.display = 'none';
+    }
+  }
+
+  // 4. Update Dashboard Subscription Bar if elements exist
+  const dashPlan = document.getElementById('dashSubPlanName');
+  const dashExams = document.getElementById('dashSubExamsUsed');
+  const dashCands = document.getElementById('dashSubCandidatesUsed');
+  if (dashPlan) dashPlan.textContent = plan.name || 'Enterprise';
+  if (dashExams) dashExams.textContent = examsRes.isUnlimited ? `${examsRes.used} (Unlimited)` : `${examsRes.used} / ${examsRes.quota}`;
+  if (dashCands) dashCands.textContent = candRes.isUnlimited ? `${candRes.used} (Unlimited)` : `${candRes.used} / ${candRes.quota}`;
+}
+
+async function loadPlansComparison() {
+  const container = document.getElementById('plansGrid');
+  if (!container) return;
+
+  try {
+    const res = await aapi('/api/organization/plans');
+    const plans = res.data || [];
+    container.innerHTML = '';
+
+    const currentCode = currentSubscriptionData?.plan?.code;
+
+    plans.forEach((p) => {
+      const isCurrent = p.code === currentCode;
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.style.cssText = `margin:0;padding:24px;border:1px solid ${isCurrent ? 'var(--color-gold)' : 'var(--color-light-border)'};border-radius:12px;background:#fff;display:flex;flex-direction:column;justify-content:space-between;position:relative`;
+
+      if (isCurrent) {
+        card.style.boxShadow = '0 4px 12px rgba(212, 175, 55, 0.15)';
+      }
+
+      const qExams = p.quotas.exams_monthly === null ? 'Unlimited' : `${p.quotas.exams_monthly} / mo`;
+      const qCands = p.quotas.candidates === null ? 'Unlimited' : p.quotas.candidates.toLocaleString();
+
+      card.innerHTML = `
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <h4 style="font-family:var(--font-display);font-size:1.35rem;margin:0;color:var(--color-navy)">${p.name}</h4>
+            ${isCurrent ? '<span class="status-badge active" style="font-size:0.65rem">CURRENT PLAN</span>' : ''}
+          </div>
+          <p style="font-size:0.8rem;color:var(--color-text-muted);margin:0 0 16px;min-height:36px">${p.description}</p>
+          
+          <div style="background:#FAF8F5;border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.8rem">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+              <span style="color:var(--color-text-muted)">Published Exams:</span>
+              <strong style="color:var(--color-navy)">${qExams}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between">
+              <span style="color:var(--color-text-muted)">Candidate Quota:</span>
+              <strong style="color:var(--color-navy)">${qCands}</strong>
+            </div>
+          </div>
+
+          <div style="font-size:0.8rem;color:var(--color-text-muted);display:flex;flex-direction:column;gap:6px;margin-bottom:20px">
+            <div>${p.features.includes('ADVANCED_ANALYTICS') ? '&#9989; Advanced Exam Analytics' : '&#9989; Basic Overview Analytics'}</div>
+            <div>${p.features.includes('PROCTORING') ? '&#9989; AI Proctoring & Risk Telemetry' : '&#10060; No Proctoring'}</div>
+            <div>${p.features.includes('CERTIFICATES') ? '&#9989; Automated PDF Certificates' : '&#10060; No Certificates'}</div>
+            <div>${p.features.includes('CUSTOM_BRANDING') ? '&#9989; Custom Logos & Color Palette' : '&#10060; Standard Brand'}</div>
+            <div>${p.features.includes('PRIORITY_SUPPORT') ? '&#9989; Priority SLA Support' : '&#9989; Standard Support'}</div>
+          </div>
+        </div>
+
+        <div>
+          ${isCurrent 
+            ? '<button class="btn small ghost" disabled style="width:100%;opacity:0.7">Current Active Tier</button>' 
+            : `<button class="btn small select-plan-btn" data-code="${p.code}" style="width:100%;background:var(--color-navy);color:#fff">Request ${p.name} &rarr;</button>`
+          }
+        </div>
+      `;
+
+      container.appendChild(card);
+    });
+
+    // Wire up plan request buttons
+    document.querySelectorAll('.select-plan-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const code = e.currentTarget.dataset.code;
+        const select = document.getElementById('upgradeTierSelect');
+        if (select) select.value = code;
+        openUpgradeModal();
+      });
+    });
+
+  } catch (err) {
+    console.error('Failed to load plans comparison:', err);
+  }
+}
+
+function openUpgradeModal() {
+  const modal = document.getElementById('upgradeModal');
+  const msg = document.getElementById('upgradeModalMsg');
+  if (msg) msg.style.display = 'none';
+  if (modal) modal.style.display = 'block';
+}
+
+function closeUpgradeModal() {
+  const modal = document.getElementById('upgradeModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Event Bindings for Subscription UI
+document.addEventListener('DOMContentLoaded', () => {
+  const refreshBtn = document.getElementById('refreshSubscriptionBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', loadSubscription);
+
+  const openModalBtn = document.getElementById('openUpgradeModalBtn');
+  if (openModalBtn) openModalBtn.addEventListener('click', openUpgradeModal);
+
+  const bannerBtn = document.getElementById('bannerUpgradeBtn');
+  if (bannerBtn) bannerBtn.addEventListener('click', openUpgradeModal);
+
+  const dashBtn = document.getElementById('dashViewSubscriptionBtn');
+  if (dashBtn) dashBtn.addEventListener('click', () => switchTab('subscription'));
+
+  const closeModalBtn = document.getElementById('closeUpgradeModalBtn');
+  if (closeModalBtn) closeModalBtn.addEventListener('click', closeUpgradeModal);
+
+  const cancelModalBtn = document.getElementById('cancelUpgradeModalBtn');
+  if (cancelModalBtn) cancelModalBtn.addEventListener('click', closeUpgradeModal);
+
+  const submitUpgradeBtn = document.getElementById('submitUpgradeRequestBtn');
+  if (submitUpgradeBtn) {
+    submitUpgradeBtn.addEventListener('click', () => {
+      const tier = document.getElementById('upgradeTierSelect')?.value;
+      const notes = document.getElementById('upgradeNotes')?.value;
+      const msg = document.getElementById('upgradeModalMsg');
+
+      if (msg) {
+        msg.className = 'okmsg';
+        msg.style.display = 'block';
+        msg.textContent = `Upgrade request for ${tier} has been dispatched to platform administration. A representative will contact you shortly.`;
+      }
+
+      setTimeout(() => {
+        closeUpgradeModal();
+      }, 2500);
+    });
+  }
 });
 
 

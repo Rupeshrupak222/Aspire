@@ -797,6 +797,156 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_exams_org_status ON exams(organization_id, status);
         `);
       }
+    },
+    {
+      version: '015_subscription_and_usage_model',
+      up: (d) => {
+        // 1. Subscription Plans catalog
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS subscription_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            features_json TEXT NOT NULL DEFAULT '[]',
+            quotas_json TEXT NOT NULL DEFAULT '{}',
+            soft_limit_pct INTEGER NOT NULL DEFAULT 80,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_subscription_plans_code ON subscription_plans(code);
+          CREATE INDEX IF NOT EXISTS idx_subscription_plans_active ON subscription_plans(is_active);
+        `);
+
+        // 2. Organization Subscriptions
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            plan_id INTEGER NOT NULL REFERENCES subscription_plans(id),
+            status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('TRIAL', 'ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED', 'EXPIRED')),
+            starts_at TEXT NOT NULL DEFAULT (datetime('now')),
+            current_period_start TEXT NOT NULL,
+            current_period_end TEXT NOT NULL,
+            trial_ends_at TEXT,
+            grace_period_ends_at TEXT,
+            override_quotas_json TEXT DEFAULT NULL,
+            override_features_json TEXT DEFAULT NULL,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_org_subscriptions_org ON organization_subscriptions(organization_id);
+          CREATE INDEX IF NOT EXISTS idx_org_subscriptions_status ON organization_subscriptions(status);
+          CREATE INDEX IF NOT EXISTS idx_org_subscriptions_period ON organization_subscriptions(current_period_start, current_period_end);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_org_active_sub ON organization_subscriptions(organization_id) WHERE status IN ('ACTIVE', 'TRIAL', 'PAST_DUE');
+        `);
+
+        // 3. Organization Usage Counters (period-scoped quota tracking)
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_usage_counters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            subscription_id INTEGER REFERENCES organization_subscriptions(id) ON DELETE SET NULL,
+            resource_key TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            reserved INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CONSTRAINT uq_org_resource_period UNIQUE (organization_id, resource_key, period_start, period_end)
+          );
+          CREATE INDEX IF NOT EXISTS idx_usage_counters_lookup ON organization_usage_counters(organization_id, resource_key, period_start, period_end);
+        `);
+
+        // 4. Organization Usage Events (idempotent audit log of all consumption/release/adjustments)
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_usage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            subscription_id INTEGER REFERENCES organization_subscriptions(id) ON DELETE SET NULL,
+            resource_key TEXT NOT NULL,
+            event_type TEXT NOT NULL CHECK(event_type IN ('CONSUMED', 'RESERVED', 'RELEASED', 'ADJUSTED', 'REVERSED')),
+            quantity INTEGER NOT NULL,
+            reference_type TEXT,
+            reference_id TEXT,
+            idempotency_key TEXT UNIQUE,
+            metadata_json TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_usage_events_org ON organization_usage_events(organization_id, resource_key);
+          CREATE INDEX IF NOT EXISTS idx_usage_events_ref ON organization_usage_events(reference_type, reference_id);
+          CREATE INDEX IF NOT EXISTS idx_usage_events_idempotency ON organization_usage_events(idempotency_key);
+        `);
+
+        // 5. Seed initial standard plans (Starter, Growth, Enterprise)
+        const insertPlan = d.prepare(`
+          INSERT OR IGNORE INTO subscription_plans (code, name, description, features_json, quotas_json, soft_limit_pct, sort_order)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        insertPlan.run(
+          'STARTER',
+          'Starter',
+          'Ideal for single institutions and departments starting scholarship assessments.',
+          JSON.stringify(['BASIC_ANALYTICS', 'STANDARD_ASSESSMENT']),
+          JSON.stringify({ exams_monthly: 3, candidates: 500 }),
+          80,
+          1
+        );
+
+        insertPlan.run(
+          'GROWTH',
+          'Growth',
+          'For scaling academies needing proctoring, certificates, and advanced analytics.',
+          JSON.stringify(['BASIC_ANALYTICS', 'ADVANCED_ANALYTICS', 'STANDARD_ASSESSMENT', 'CERTIFICATES', 'PROCTORING']),
+          JSON.stringify({ exams_monthly: null, candidates: 5000 }),
+          80,
+          2
+        );
+
+        insertPlan.run(
+          'ENTERPRISE',
+          'Enterprise',
+          'Comprehensive multi-tenant solution with custom branding, priority support, and bespoke quotas.',
+          JSON.stringify([
+            'BASIC_ANALYTICS',
+            'ADVANCED_ANALYTICS',
+            'STANDARD_ASSESSMENT',
+            'CERTIFICATES',
+            'PROCTORING',
+            'CUSTOM_BRANDING',
+            'PRIORITY_SUPPORT',
+            'DEDICATED_INFRASTRUCTURE',
+            'CUSTOM_INTEGRATIONS'
+          ]),
+          JSON.stringify({ exams_monthly: null, candidates: null }),
+          85,
+          3
+        );
+
+        // 6. Safe backfill of existing organizations:
+        // Assign ENTERPRISE to organization 1 (and all existing organizations) with ACTIVE status
+        const enterprisePlan = d.prepare("SELECT id FROM subscription_plans WHERE code = 'ENTERPRISE'").get();
+        if (enterprisePlan) {
+          const now = new Date();
+          const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+          const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
+
+          const orgs = d.prepare("SELECT id FROM organizations").all();
+          const insertSub = d.prepare(`
+            INSERT OR IGNORE INTO organization_subscriptions (
+              organization_id, plan_id, status, starts_at, current_period_start, current_period_end, notes
+            ) VALUES (?, ?, 'ACTIVE', ?, ?, ?, 'Initial migration backfill to Enterprise')
+          `);
+
+          for (const org of orgs) {
+            insertSub.run(org.id, enterprisePlan.id, periodStart, periodStart, periodEnd);
+          }
+        }
+      }
     }
   ];
 

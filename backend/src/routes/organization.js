@@ -27,6 +27,17 @@ const {
   examCandidatesFilterSchema,
   examQuestionsFilterSchema
 } = require('../validation/exam-analytics.schemas');
+const reportingService = require('../services/reporting/report.service');
+const {
+  reportTypeParamSchema,
+  reportFilterSchema,
+  reportExportSchema
+} = require('../validation/reporting.schemas');
+const subscriptionService = require('../services/subscription/subscription.service');
+const quotaService = require('../services/subscription/quota.service');
+const planService = require('../services/subscription/plan.service');
+const usageService = require('../services/subscription/usage.service');
+const { requireFeature } = require('../middleware/quota-enforcement');
 
 // Memory storage for file uploads (max 2MB)
 const upload = multer({
@@ -62,6 +73,15 @@ router.patch('/', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), validate(
     return next(new AuthorizationError('User account is not assigned to an organization'));
   }
 
+  // Feature Gating: Custom color palettes require CUSTOM_BRANDING
+  if (req.body.primary_color || req.body.secondary_color || req.body.accent_color) {
+    const features = subscriptionService.getEffectiveFeatures(orgId);
+    if (!features.includes('CUSTOM_BRANDING') && req.user.role !== ROLES.SUPER_ADMIN) {
+      const { FeatureNotAvailableError } = require('../errors/app-error');
+      return next(new FeatureNotAvailableError('Custom branding colors require the CUSTOM_BRANDING feature entitlement. Please upgrade your plan.', 'CUSTOM_BRANDING'));
+    }
+  }
+
   const updated = orgService.updateOrganization(orgId, req.body, {
     actorId: req.user.id,
     isSuperAdmin: false
@@ -78,16 +98,95 @@ router.patch('/', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), validate(
 });
 
 /**
+ * GET /api/organization/subscription
+ * Get current organization subscription details, plan metadata, and effective quotas.
+ */
+router.get('/subscription', requirePermission(PERMISSIONS.ORGANIZATIONS_READ, PERMISSIONS.SETTINGS_READ), (req, res, next) => {
+  const orgId = req.user.organization_id;
+  if (!orgId) {
+    return next(new AuthorizationError('User account is not assigned to an organization'));
+  }
+
+  const sub = subscriptionService.getOrganizationSubscription(orgId);
+  const effectiveQuotas = subscriptionService.getEffectiveQuotas(orgId);
+  const effectiveFeatures = subscriptionService.getEffectiveFeatures(orgId);
+
+  res.json({
+    success: true,
+    data: {
+      subscription: sub,
+      effectiveQuotas,
+      effectiveFeatures
+    }
+  });
+});
+
+/**
+ * GET /api/organization/plans
+ * Available subscription plans catalog for tier comparison.
+ */
+router.get('/plans', requirePermission(PERMISSIONS.ORGANIZATIONS_READ, PERMISSIONS.SETTINGS_READ), (req, res, next) => {
+  const plans = planService.listPlans();
+  res.json({ success: true, data: plans });
+});
+
+/**
+ * GET /api/organization/plan/features
+ * Effective feature entitlements for the current organization.
+ */
+router.get('/plan/features', requirePermission(PERMISSIONS.ORGANIZATIONS_READ, PERMISSIONS.SETTINGS_READ), (req, res, next) => {
+  const orgId = req.user.organization_id;
+  if (!orgId) {
+    return next(new AuthorizationError('User account is not assigned to an organization'));
+  }
+
+  const features = subscriptionService.getEffectiveFeatures(orgId);
+  res.json({ success: true, data: features });
+});
+
+/**
  * GET /api/organization/usage
- * Get tenant-scoped usage analytics.
+ * Get tenant-scoped usage analytics and quota summaries.
  */
 router.get('/usage', requirePermission(PERMISSIONS.ANALYTICS_READ), (req, res, next) => {
   const orgId = req.user.organization_id;
   if (!orgId) {
     return next(new AuthorizationError('User account is not assigned to an organization'));
   }
-  const usage = orgService.getOrganizationUsage(orgId);
-  res.json({ success: true, data: usage });
+
+  const rawUsage = orgService.getOrganizationUsage(orgId);
+  const quotaSummary = quotaService.getQuotaSummary(orgId);
+
+  res.json({
+    success: true,
+    data: {
+      ...rawUsage,
+      ...quotaSummary
+    }
+  });
+});
+
+/**
+ * GET /api/organization/usage/:resourceKey
+ * Specific resource breakdown and recent usage events.
+ */
+router.get('/usage/:resourceKey', requirePermission(PERMISSIONS.ANALYTICS_READ), (req, res, next) => {
+  const orgId = req.user.organization_id;
+  if (!orgId) {
+    return next(new AuthorizationError('User account is not assigned to an organization'));
+  }
+
+  const { resourceKey } = req.params;
+  const quotaCheck = quotaService.checkQuota(orgId, resourceKey, 0);
+  const events = usageService.getUsageEvents(orgId, { resourceKey, limit: 25 });
+
+  res.json({
+    success: true,
+    data: {
+      resource: quotaCheck,
+      events
+    }
+  });
 });
 
 /**
@@ -118,9 +217,9 @@ function extractUploadPayload(req) {
 
 /**
  * POST /api/organization/branding/logo
- * Upload and update organization logo.
+ * Upload and update organization logo (requires CUSTOM_BRANDING feature entitlement).
  */
-router.post('/branding/logo', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), upload.single('logo'), async (req, res, next) => {
+router.post('/branding/logo', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), requireFeature('CUSTOM_BRANDING'), upload.single('logo'), async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
     if (!orgId) {
@@ -160,9 +259,9 @@ router.post('/branding/logo', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE
 
 /**
  * POST /api/organization/branding/certificate
- * Upload certificate branding assets (logo or signature).
+ * Upload certificate branding assets (logo or signature) (requires CUSTOM_BRANDING feature entitlement).
  */
-router.post('/branding/certificate', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), upload.single('asset'), async (req, res, next) => {
+router.post('/branding/certificate', requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE), requireFeature('CUSTOM_BRANDING'), upload.single('asset'), async (req, res, next) => {
   try {
     const orgId = req.user.organization_id;
     if (!orgId) {
@@ -516,6 +615,95 @@ router.get(
       const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
       const data = examAnalyticsService.getExamOverview(req.params.examId, orgId, req.query, isSuperAdmin);
       res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ============================================================================
+// DAY 20: REPORTING SYSTEM ROUTES (ORGANIZATION SCOPE)
+// ============================================================================
+
+/**
+ * GET /api/organization/reports
+ * Returns report catalog, descriptions, and dynamic filter options (exams, colleges).
+ */
+router.get(
+  '/reports',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const options = reportingService.getReportOptions({ organizationId: orgId, isSuperAdmin });
+      res.json({ success: true, data: options });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/reports/:reportType/export
+ * Downloads complete report in CSV, Excel, or PDF format with tenant boundary enforcement.
+ * Note: Placed BEFORE /:reportType to avoid Express routing collision.
+ */
+router.get(
+  '/reports/:reportType/export',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: reportTypeParamSchema, query: reportExportSchema }),
+  async (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+
+      const exportResult = await reportingService.exportReport({
+        reportType: req.params.reportType,
+        format: req.query.format,
+        organizationId: orgId,
+        isSuperAdmin,
+        filters: req.query,
+        actorId: req.user.id,
+        req
+      });
+
+      res.setHeader('Content-Type', exportResult.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${exportResult.filename}"`);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('X-Report-Records', exportResult.recordCount);
+      res.send(exportResult.buffer);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/reports/:reportType
+ * Returns server-side paginated preview dataset, active filters, and summary KPIs.
+ */
+router.get(
+  '/reports/:reportType',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: reportTypeParamSchema, query: reportFilterSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+
+      const report = reportingService.getReportPreview({
+        reportType: req.params.reportType,
+        organizationId: orgId,
+        isSuperAdmin,
+        filters: req.query
+      });
+
+      res.json({ success: true, data: report });
     } catch (err) {
       next(err);
     }

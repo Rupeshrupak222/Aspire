@@ -322,6 +322,19 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
         WHERE id = ?
       `).run(name, email || null, college || null, city || null, grad_year || null, track || null, campaign_code || null, assignedOrgId, studentId);
     } else {
+      // Day 21 Quota Enforcement:
+      // A new distinct candidate identity consumes 1 candidate quota unit for the hosting organization.
+      const { consumeQuota } = require('../services/subscription/quota.service');
+      consumeQuota({
+        organizationId: assignedOrgId,
+        resourceKey: 'candidates',
+        quantity: 1,
+        referenceType: 'candidate',
+        referenceId: normPhone,
+        idempotencyKey: `cand_${assignedOrgId}_${normPhone}`,
+        metadata: { name, email, examId: targetExamId }
+      });
+
       const ins = db.prepare(`INSERT INTO students
         (name, phone, email, college, city, grad_year, track, campaign_code, organization_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);

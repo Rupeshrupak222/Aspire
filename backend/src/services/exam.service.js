@@ -875,6 +875,21 @@ function transitionExamStatus(examId, targetStatus, user, req = null) {
     if (!validation.valid && validation.errors && validation.errors.length) {
       throw new ValidationError(`Cannot publish exam: ${validation.errors.join('; ')}`);
     }
+
+    // Day 21 Quota Enforcement:
+    // When an exam is published for the first time, verify and consume the monthly published exam quota.
+    if (!exam.published_at && exam.organization_id) {
+      const { consumeQuota } = require('./subscription/quota.service');
+      consumeQuota({
+        organizationId: exam.organization_id,
+        resourceKey: 'exams_monthly',
+        quantity: 1,
+        referenceType: 'exam',
+        referenceId: String(examId),
+        idempotencyKey: `pub_exam_${examId}`,
+        metadata: { examName: exam.name, code: exam.code, publishedBy: user.id }
+      });
+    }
   }
 
   const updates = ['status = ?', 'updated_by = ?', "updated_at = datetime('now')"];

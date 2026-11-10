@@ -4,7 +4,7 @@ const { db, getConfig, setConfig } = require('../db');
 const judge0 = require('../services/judge0');
 const { executionService } = require('../services/code-execution/execution.service');
 const { codeExecutionQueue } = require('../queues/code-execution.queue');
-const { requireAuth, requirePermission } = require('../middleware/admin-auth');
+const { requireAuth, requirePermission, requireRole } = require('../middleware/admin-auth');
 const validate = require('../middleware/validate');
 const { NotFoundError, ValidationError, AuthorizationError } = require('../errors/app-error');
 const { idParamSchema } = require('../validation/common.schemas');
@@ -48,6 +48,24 @@ const {
   examCandidatesFilterSchema,
   examQuestionsFilterSchema
 } = require('../validation/exam-analytics.schemas');
+const reportingService = require('../services/reporting/report.service');
+const {
+  reportTypeParamSchema,
+  reportFilterSchema,
+  reportExportSchema
+} = require('../validation/reporting.schemas');
+const planService = require('../services/subscription/plan.service');
+const subscriptionService = require('../services/subscription/subscription.service');
+const quotaService = require('../services/subscription/quota.service');
+const usageService = require('../services/subscription/usage.service');
+const {
+  createPlanSchema,
+  updatePlanSchema,
+  assignSubscriptionSchema,
+  updateSubscriptionSchema,
+  adjustUsageSchema,
+  planParamSchema
+} = require('../validation/subscription.schemas');
 const metrics = require('../utils/metrics');
 const {
   createExamSchema,
@@ -1131,14 +1149,21 @@ router.post('/organizations/:id/invitations/:invitationId/revoke', requirePermis
   }
 });
 
-// Organization Usage (Admin)
+// Organization Usage (Admin) - enhanced with Day 21 Quota & Usage Engine
 router.get('/organizations/:id/usage', requirePermission(PERMISSIONS.ANALYTICS_READ), validate({ params: idParamSchema }), (req, res, next) => {
   if (req.user.role !== ROLES.SUPER_ADMIN && Number(req.user.organization_id) !== Number(req.params.id)) {
     return next(new AuthorizationError('Access denied: cannot view usage for another organization.'));
   }
   try {
-    const usage = orgService.getOrganizationUsage(req.params.id);
-    res.json({ success: true, data: usage });
+    const rawUsage = orgService.getOrganizationUsage(req.params.id);
+    const quotaSummary = quotaService.getQuotaSummary(Number(req.params.id));
+    res.json({
+      success: true,
+      data: {
+        ...rawUsage,
+        ...quotaSummary
+      }
+    });
   } catch (err) {
     next(err);
   }
@@ -1151,6 +1176,140 @@ router.get('/organizations-platform-usage', requirePermission(PERMISSIONS.ANALYT
   }
   const usage = orgService.getPlatformOrganizationsUsage();
   res.json({ success: true, data: usage });
+});
+
+// ============================================================================
+// DAY 21: SUBSCRIPTION PLANS & MONETIZATION MANAGEMENT (SUPER_ADMIN)
+// ============================================================================
+
+/**
+ * GET /api/admin/subscription-plans
+ * List all subscription plans (active & inactive).
+ */
+router.get('/subscription-plans', requirePermission(PERMISSIONS.SETTINGS_READ, PERMISSIONS.ORGANIZATIONS_READ), (req, res, next) => {
+  try {
+    const plans = planService.listPlans({ includeInactive: true });
+    res.json({ success: true, data: plans });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/subscription-plans
+ * Create a new subscription plan (SUPER_ADMIN only).
+ */
+router.post('/subscription-plans', requireRole(ROLES.SUPER_ADMIN), validate({ body: createPlanSchema }), (req, res, next) => {
+  try {
+    const plan = planService.createPlan(req.body, req.user.id);
+    res.status(201).json({ success: true, data: plan });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/admin/subscription-plans/:planId
+ * Update an existing subscription plan (SUPER_ADMIN only).
+ */
+router.patch('/subscription-plans/:planId', requireRole(ROLES.SUPER_ADMIN), validate({ params: planParamSchema, body: updatePlanSchema }), (req, res, next) => {
+  try {
+    const plan = planService.updatePlan(Number(req.params.planId), req.body, req.user.id);
+    res.json({ success: true, data: plan });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/organizations/:id/subscription
+ * Get organization subscription details, effective quotas, features, and audit history.
+ */
+router.get('/organizations/:id/subscription', requirePermission(PERMISSIONS.ORGANIZATIONS_READ), validate({ params: idParamSchema }), (req, res, next) => {
+  if (req.user.role !== ROLES.SUPER_ADMIN && Number(req.user.organization_id) !== Number(req.params.id)) {
+    return next(new AuthorizationError('Access denied: cannot view subscription for another organization.'));
+  }
+  try {
+    const orgId = Number(req.params.id);
+    const subscription = subscriptionService.getOrganizationSubscription(orgId);
+    const effectiveQuotas = subscriptionService.getEffectiveQuotas(orgId);
+    const effectiveFeatures = subscriptionService.getEffectiveFeatures(orgId);
+    const history = subscriptionService.getSubscriptionHistory(orgId);
+
+    res.json({
+      success: true,
+      data: {
+        subscription,
+        effectiveQuotas,
+        effectiveFeatures,
+        history
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/organizations/:id/subscription
+ * Assign or change organization subscription plan (SUPER_ADMIN only).
+ */
+router.post('/organizations/:id/subscription', requireRole(ROLES.SUPER_ADMIN), validate({ params: idParamSchema, body: assignSubscriptionSchema }), (req, res, next) => {
+  try {
+    const orgId = Number(req.params.id);
+    const subscription = subscriptionService.assignSubscription({
+      organizationId: orgId,
+      planCodeOrId: req.body.plan_code || req.body.plan_id,
+      status: req.body.status,
+      startsAt: req.body.starts_at,
+      periodStart: req.body.current_period_start,
+      periodEnd: req.body.current_period_end,
+      trialEndsAt: req.body.trial_ends_at,
+      gracePeriodEndsAt: req.body.grace_period_ends_at,
+      overrideQuotas: req.body.override_quotas,
+      overrideFeatures: req.body.override_features,
+      notes: req.body.notes,
+      actorId: req.user.id
+    });
+
+    res.json({ success: true, data: subscription });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/admin/organizations/:id/subscription
+ * Update organization subscription status, period dates, or quota/feature overrides (SUPER_ADMIN only).
+ */
+router.patch('/organizations/:id/subscription', requireRole(ROLES.SUPER_ADMIN), validate({ params: idParamSchema, body: updateSubscriptionSchema }), (req, res, next) => {
+  try {
+    const orgId = Number(req.params.id);
+    const subscription = subscriptionService.updateSubscription(orgId, req.body, req.user.id);
+    res.json({ success: true, data: subscription });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/organizations/:id/usage/adjust
+ * Manually adjust organization usage counter with documented reason (SUPER_ADMIN only).
+ */
+router.post('/organizations/:id/usage/adjust', requireRole(ROLES.SUPER_ADMIN), validate({ params: idParamSchema, body: adjustUsageSchema }), (req, res, next) => {
+  try {
+    const orgId = Number(req.params.id);
+    const result = quotaService.adjustQuota({
+      organizationId: orgId,
+      resourceKey: req.body.resource_key,
+      quantity: req.body.quantity,
+      reason: req.body.reason,
+      actorId: req.user.id
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // System & application performance metrics (Day 15 / Day 16)
@@ -1247,5 +1406,102 @@ router.get('/dashboard/organizations/:organizationId', requirePermission(PERMISS
     next(err);
   }
 });
+
+// ============================================================================
+// DAY 20: SUPER ADMIN & PLATFORM-WIDE REPORTING SYSTEM ROUTES
+// ============================================================================
+
+/**
+ * GET /api/admin/reports
+ * Catalog and options for Super Admin / platform-level reporting.
+ */
+router.get(
+  '/reports',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  (req, res, next) => {
+    try {
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      const targetOrgId = isSuperAdmin ? (req.query.organization_id ? Number(req.query.organization_id) : null) : req.user.organization_id;
+      const options = reportingService.getReportOptions({ organizationId: targetOrgId, isSuperAdmin });
+      res.json({ success: true, data: options });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/admin/reports/:reportType/export
+ * Export report across all organizations or for a specific tenant.
+ */
+router.get(
+  '/reports/:reportType/export',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: reportTypeParamSchema, query: reportExportSchema }),
+  async (req, res, next) => {
+    try {
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      let targetOrgId = req.user.organization_id;
+
+      if (isSuperAdmin) {
+        targetOrgId = req.query.organization_id ? Number(req.query.organization_id) : null;
+      } else if (req.query.organization_id && Number(req.query.organization_id) !== Number(targetOrgId)) {
+        return next(new AuthorizationError('Access denied: cross-tenant reporting export not permitted'));
+      }
+
+      const exportResult = await reportingService.exportReport({
+        reportType: req.params.reportType,
+        format: req.query.format,
+        organizationId: targetOrgId,
+        isSuperAdmin: isSuperAdmin && !targetOrgId,
+        filters: req.query,
+        actorId: req.user.id,
+        req
+      });
+
+      res.setHeader('Content-Type', exportResult.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${exportResult.filename}"`);
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('X-Report-Records', exportResult.recordCount);
+      res.send(exportResult.buffer);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/admin/reports/:reportType
+ * Preview report with pagination and KPIs.
+ */
+router.get(
+  '/reports/:reportType',
+  requirePermission(PERMISSIONS.ANALYTICS_READ),
+  validate({ params: reportTypeParamSchema, query: reportFilterSchema }),
+  (req, res, next) => {
+    try {
+      const isSuperAdmin = req.user.role === ROLES.SUPER_ADMIN;
+      let targetOrgId = req.user.organization_id;
+
+      if (isSuperAdmin) {
+        targetOrgId = req.query.organization_id ? Number(req.query.organization_id) : null;
+      } else if (req.query.organization_id && Number(req.query.organization_id) !== Number(targetOrgId)) {
+        return next(new AuthorizationError('Access denied: cross-tenant reporting preview not permitted'));
+      }
+
+      const report = reportingService.getReportPreview({
+        reportType: req.params.reportType,
+        organizationId: targetOrgId,
+        isSuperAdmin: isSuperAdmin && !targetOrgId,
+        filters: req.query
+      });
+
+      res.json({ success: true, data: report });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 module.exports = router;

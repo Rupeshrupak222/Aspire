@@ -196,7 +196,23 @@ function createOrganization({
     created_by || null
   );
 
-  return findOrganizationById(result.lastInsertRowid);
+  const orgId = result.lastInsertRowid;
+  try {
+    const plan = db.prepare("SELECT * FROM subscription_plans WHERE code = 'ENTERPRISE'").get()
+              || db.prepare("SELECT * FROM subscription_plans WHERE is_active = 1 ORDER BY id ASC LIMIT 1").get();
+    if (plan) {
+      const now = new Date();
+      const periodStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+      db.prepare(`
+        INSERT INTO organization_subscriptions (
+          organization_id, plan_id, status, starts_at, current_period_start, current_period_end, created_at, updated_at
+        ) VALUES (?, ?, 'ACTIVE', ?, ?, ?, ?, ?)
+      `).run(orgId, plan.id, now.toISOString(), periodStart, periodEnd, now.toISOString(), now.toISOString());
+    }
+  } catch (err) {}
+
+  return findOrganizationById(orgId);
 }
 
 /**

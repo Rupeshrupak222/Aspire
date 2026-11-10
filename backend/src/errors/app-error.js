@@ -72,6 +72,29 @@ class InternalServerError extends AppError {
   }
 }
 
+class QuotaExceededError extends AppError {
+  constructor(message = 'Quota limit reached for this resource', details = null) {
+    super(message, 403, 'QUOTA_EXCEEDED');
+    this.details = details;
+  }
+}
+
+class FeatureNotAvailableError extends AppError {
+  constructor(message = 'Feature is not available in your current plan', featureCode = null) {
+    super(message, 403, 'FEATURE_NOT_AVAILABLE');
+    this.featureCode = featureCode;
+    this.details = featureCode ? { feature: featureCode } : null;
+  }
+}
+
+class SubscriptionInactiveError extends AppError {
+  constructor(message = 'Subscription is inactive, suspended, or expired', status = null) {
+    super(message, 403, 'SUBSCRIPTION_INACTIVE');
+    this.subscriptionStatus = status;
+    this.details = status ? { status } : null;
+  }
+}
+
 module.exports = {
   AppError,
   ValidationError,
@@ -82,5 +105,8 @@ module.exports = {
   PayloadTooLargeError,
   RateLimitError,
   ExternalServiceError,
-  InternalServerError
+  InternalServerError,
+  QuotaExceededError,
+  FeatureNotAvailableError,
+  SubscriptionInactiveError
 };

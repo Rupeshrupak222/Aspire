@@ -82,6 +82,7 @@ function errorHandler(err, req, res, next) {
     code,
     message,
     ...(error.fields ? { fields: error.fields } : {}),
+    ...(error.details ? { details: error.details } : {}),
     requestId: req.id || undefined
   });
 }
