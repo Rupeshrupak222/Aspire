@@ -106,7 +106,7 @@ async function run() {
     ok('Hard limit was NEVER breached (> 10)', usageAfter.used <= 10);
 
   } finally {
-    try { fs.unlinkSync(DB_FILE); } catch {}
+    try { fs.unlinkSync(DB_FILE); } catch { }
   }
 
   console.log('\n====================================================');
