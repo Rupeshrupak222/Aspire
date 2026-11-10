@@ -1,45 +1,251 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aspire by Adyapan — Instructions</title>
-<link rel="stylesheet" href="/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08090B">
+  <title>Assessment Instructions — Aspire by Adyapan</title>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/png" href="/assets/logo/aspire-favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo/aspire-favicon.png">
+  <style>
+    body {
+      background-color: var(--color-ivory);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .ins-header {
+      background: var(--color-midnight);
+      color: var(--color-text-on-dark);
+      padding: 18px clamp(20px, 4vw, 48px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--color-dark-border);
+    }
+    .ins-wrap {
+      flex: 1;
+      max-width: 820px;
+      margin: 40px auto;
+      padding: 0 20px;
+      width: 100%;
+    }
+    .ins-card {
+      background: var(--color-light-card);
+      border: 1px solid var(--color-light-border);
+      border-radius: 20px;
+      padding: clamp(28px, 4.5vw, 48px);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+      position: relative;
+    }
+    .ins-card::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+    }
+    .ins-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      color: var(--color-gold-deep);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .meta-pills-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 20px 0 28px;
+    }
+    .meta-pill {
+      background: rgba(255, 201, 0, 0.12);
+      border: 1px solid rgba(255, 201, 0, 0.35);
+      color: var(--color-midnight);
+      padding: 8px 16px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .rules-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .rules-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    .rule-bullet {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--color-midnight);
+      color: var(--color-gold);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .readiness-box {
+      background: #F9FAFB;
+      border: 1px solid var(--color-light-border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin: 24px 0;
+    }
+    .readiness-title {
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-midnight);
+      margin-bottom: 8px;
+    }
+    .readiness-items {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+    }
+    @media (max-width: 600px) {
+      .readiness-items {
+        grid-template-columns: 1fr;
+      }
+    }
+    .site-mini-footer {
+      background: var(--color-midnight);
+      color: var(--color-text-muted-on-dark);
+      padding: 20px;
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      border-top: 1px solid var(--color-dark-border);
+    }
+  </style>
 </head>
 <body>
-<div class="topbar"><div class="logo">ady.</div><div><strong>Aspire by Adyapan</strong><div class="tag">Aspire. Achieve. Adyapan.</div></div></div>
-<div class="wrap">
-  <div class="card">
-    <h1 id="insTitle">Test Instructions</h1>
-    <p class="sub">Read carefully before you begin.</p>
-    <ul style="line-height:2">
-      <li><strong id="qCount">40</strong> questions · <strong id="dur">90</strong> minutes.</li>
-      <li id="breakdown">10 aptitude · 25 technical · 5 coding questions.</li>
-      <li id="codeNote" style="display:none">Some questions ask you to <strong>write code</strong> — it is executed and graded automatically.</li>
-      <li>The timer starts when you begin. The test <strong>auto-submits</strong> when time runs out.</li>
-      <li>Switching browser tabs is <strong>detected and recorded</strong>.</li>
-      <li>Your score, scholarship and certificate appear <strong>instantly</strong> after submission.</li>
-      <li>Scholarship tiers: 90%+ → 100% · 75–89% → 50% · 60–74% → 25% · 40–59% → 10%.</li>
-    </ul>
-    <button id="startBtn" class="btn">Start Test Now</button>
-    <div id="insErr" class="err"></div>
-  </div>
-</div>
-<script src="/js/config.js"></script>
-<script src="/js/common.js"></script>
-<script>
-(async () => {
-  if (!getToken()) { window.location.href = '/index.html'; return; }
-  try {
-    const cfg = await api('/api/config/public');
-    document.getElementById('insTitle').textContent = cfg.test_title || 'Test Instructions';
-    document.getElementById('qCount').textContent = cfg.question_count;
-    document.getElementById('dur').textContent = cfg.duration_minutes;
-    if (cfg.breakdown) document.getElementById('breakdown').textContent = cfg.breakdown + ' questions.';
-    if (cfg.code_questions_enabled) document.getElementById('codeNote').style.display = 'list-item';
-  } catch (e) { showErr('insErr', e.message); }
-  document.getElementById('startBtn').addEventListener('click', () => { window.location.href = '/test.html'; });
-})();
-</script>
+  <!-- Branded Header -->
+  <header class="ins-header">
+    <a class="brand-link" href="/landing.html">
+      <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire by Adyapan" style="height:34px;width:auto;display:block">
+      <span class="brand-title" style="display:none">ASPIRE<span class="brand-dot">.</span></span>
+      <span class="brand-subtitle" style="display:none">BY ADYAPAN</span>
+    </a>
+    <span class="status-badge status-live" style="background:rgba(255,201,0,0.2);color:var(--color-gold);border:1px solid var(--color-gold)">Proctored Session</span>
+  </header>
+
+  <!-- Instructions Container -->
+  <main class="ins-wrap">
+    <div class="ins-card">
+      <div class="ins-eyebrow">PRE-ASSESSMENT BRIEFING</div>
+      <h1 id="insTitle">Test Instructions</h1>
+      <p class="sub">Review the guidelines carefully before beginning your evaluation.</p>
+
+      <div class="meta-pills-row">
+        <div class="meta-pill">
+          <span>Total Questions:</span> <strong id="qCount">40</strong>
+        </div>
+        <div class="meta-pill">
+          <span>Duration:</span> <strong id="dur">90</strong> <span>Minutes</span>
+        </div>
+        <div class="meta-pill" id="breakdown">
+          10 aptitude · 25 technical · 5 coding questions.
+        </div>
+      </div>
+
+      <ul class="rules-list">
+        <li class="rules-item">
+          <span class="rule-bullet">1</span>
+          <div>
+            <strong>Server-Authoritative Timer:</strong> The countdown starts immediately upon clicking the button below. The assessment auto-submits when time expires, even if the browser is closed or refreshed.
+          </div>
+        </li>
+        <li class="rules-item" id="codeNote" style="display:none">
+          <span class="rule-bullet">2</span>
+          <div>
+            <strong>Automated Code Execution:</strong> Coding challenges are executed in secure cloud sandboxes and evaluated automatically against hidden test cases.
+          </div>
+        </li>
+        <li class="rules-item">
+          <span class="rule-bullet">3</span>
+          <div>
+            <strong>Behavioral Proctoring:</strong> Browser tab switches, window blurs, full-screen exits, and copy-paste attempts are logged and factor into the integrity review.
+          </div>
+        </li>
+        <li class="rules-item">
+          <span class="rule-bullet">4</span>
+          <div>
+            <strong>Network Resilience & Autosave:</strong> Your progress is continuously cached locally in IndexedDB and synchronized with the server. If Wi-Fi drops, keep working—answers sync upon reconnection.
+          </div>
+        </li>
+        <li class="rules-item">
+          <span class="rule-bullet">5</span>
+          <div>
+            <strong>Instant Evaluation & Certification:</strong> Final scores, verified scholarship tier assignments, and achievement certificates are issued instantly upon submission.
+          </div>
+        </li>
+      </ul>
+
+      <!-- Readiness Checklist -->
+      <div class="readiness-box">
+        <div class="readiness-title">System Readiness Checklist</div>
+        <div class="readiness-items">
+          <div>✓ Modern Browser (Chrome, Firefox, Safari, Edge)</div>
+          <div>✓ Stable Internet Connection</div>
+          <div>✓ Webcam / Device Environment Ready</div>
+          <div>✓ Single Tab Testing Protocol</div>
+        </div>
+      </div>
+
+      <button id="startBtn" class="btn" style="width:100%;margin-top:16px">
+        <span>I Understand — Start Assessment</span>
+        <span aria-hidden="true">↗</span>
+      </button>
+
+      <div id="insErr" class="err"></div>
+    </div>
+  </main>
+
+  <footer class="site-mini-footer" style="display:flex;align-items:center;justify-content:center;gap:10px">
+    <img src="/assets/logo/aspire-submark-white.png" alt="Aspire" style="height:18px;width:auto;opacity:0.75">
+    <span>ASPIRE. ACHIEVE. ADYAPAN. &copy; 2026 ALL RIGHTS RESERVED.</span>
+  </footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    (async () => {
+      if (!getToken()) { window.location.href = '/index.html'; return; }
+      try {
+        const cfg = await api('/api/config/public');
+        document.getElementById('insTitle').textContent = cfg.test_title || 'Test Instructions';
+        document.getElementById('qCount').textContent = cfg.question_count;
+        document.getElementById('dur').textContent = cfg.duration_minutes;
+        if (cfg.breakdown) document.getElementById('breakdown').textContent = cfg.breakdown + ' questions.';
+        if (cfg.code_questions_enabled) document.getElementById('codeNote').style.display = 'flex';
+      } catch (e) { showErr('insErr', e.message); }
+      document.getElementById('startBtn').addEventListener('click', () => { window.location.href = '/test.html'; });
+    })();
+  </script>
 </body>
 </html>

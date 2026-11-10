@@ -507,3 +507,57 @@ Certificates are generated on-demand using PDFKit at /api/certificate/:certifica
 - [x] PDF certificate generation verified with dynamic candidate data.
 - [x] Judge0 code compilation sandboxed and shielded from client abuse.
 - [x] All 98+ automated test assertions pass cleanly with zero warnings.
+
+## 11. Complete Internal Platform Redesign & Screen Inventory (Days 1–20)
+
+### 11.1 Luxury Visual Identity & Brand Foundations
+Following the successful benchmark of the public landing page, all internal platform screens have been redesigned into a cohesive, high-craftsmanship ecosystem.
+
+#### Design Tokens
+- **Midnight Black (`--color-midnight: #08090B`)**: Structural authority, primary topbars, dark authentication cards, sidebars, and high-contrast anchors.
+- **Warm Ivory (`--color-ivory: #F5F3EF`)**: Primary application background, providing warm, glare-free readability for assessments and data grids.
+- **Golden Yellow (`--color-gold: #FFC900`)**: Precision accent, active navigation markers, key KPI highlights, primary CTAs, and scholarship tiers.
+- **Dark Surface & Border**:
+  - `--color-dark-surface: #111216;`
+  - `--color-dark-card: #17181B;`
+  - `--color-dark-border: rgba(245, 243, 239, 0.14);`
+- **Typography**:
+  - *Playfair Display* (Serif): Hero metrics, score displays, section headers, modal titles, and certificate diplomas.
+  - *Poppins* (Sans-serif): Body copy, inputs, table records, buttons, and operational controls.
+  - *Consolas / Menlo* (Monospace): Code runner IDE, test cases, and cryptographic tokens.
+
+### 11.2 Master Screen Inventory (23 Screens + Error States)
+
+| Screen # | Screen Name | Route / View | Role Scope | Architectural Blueprint |
+| :--- | :--- | :--- | :--- | :--- |
+| **01** | Candidate Login | `/login.html` | Public / Candidate | Midnight luxury card, email/password, toggle, remember me, redirects to `/candidate-dashboard.html` |
+| **02** | Candidate Registration | `/index.html` | Public / Candidate | Ivory canvas with midnight header, Playfair title, academic field inputs, track selection, `#regForm` |
+| **03** | Forgot Password | `/forgot-password.html` | Public / Candidate | Midnight aesthetic, security protocol notice, email input, OTP/reset trigger |
+| **04** | Candidate Dashboard | `/candidate-dashboard.html#dashboard` | Candidate | Next Assessment card, Total Assessments, Scholarships, Profile completion meter |
+| **05** | Candidate Profile | `/candidate-dashboard.html#profile` | Candidate | Verified academic credentials, college, track, graduation year, contact information |
+| **06** | Assessments List | `/candidate-dashboard.html#assessments`| Candidate | Active and upcoming assessment cards, duration, rules, launch assessment button |
+| **07** | Assessment Briefing | `/instructions.html` | Candidate | Test quotas, proctoring protocol disclosures, system readiness check, `#startBtn` |
+| **08** | Examination Interface | `/test.html` | Candidate | Sticky timer (`#timerText`), sync badge (`#syncStatusBadge`), question palette (`#palette`), `#qbox`, IDE |
+| **09** | Assessment Results | `/result.html` | Candidate | Celebratory card, Playfair score (`#rScore`), scholarship tier (`#rSch`), claim code, certificate PDF |
+| **10** | Scholarship Details | `/candidate-dashboard.html#scholarship`| Candidate | Earned percentage, claim code, admission guidance, counselor contact |
+| **11** | Achievement Certificate | `/candidate-dashboard.html#certificate`| Candidate | On-screen diploma frame, gold seal, candidate name, PDF download link |
+| **12** | Helpdesk & FAQs | `/candidate-dashboard.html#support` | Candidate | Assessment rules, offline recovery instructions, contact helpdesk |
+| **13** | Admin Login | `/admin.html#loginBox` | Admin / Internal | Midnight console card, credentials, role-aware redirection, `#adminEmailInput`, `#loginBtn` |
+| **14** | SaaS Analytics Dashboard | `/admin.html#pane-dashboard` | ORG_ADMIN, SUPER_ADMIN | 8 KPI cards, 5 visual Chart.js charts, date filter, scope selector, platform org table |
+| **15** | Exam Analytics | `/admin.html#pane-exam-analytics` | EXAM_MANAGER, ORG_ADMIN | Funnel progression, Kelley's discrimination index, coding error breakdown, statistics grid |
+| **16** | Exam Management | `/admin.html#pane-exams` | EXAM_MANAGER, ORG_ADMIN | Versioned assessment roster, status filter, `#createExamBtn`, pagination |
+| **17** | Exam Builder 2.0 | `/admin.html#examBuilderModal` | EXAM_MANAGER, ORG_ADMIN | 4-step wizard: Basic Info, Sections & Rules, Scholarship Slabs, Review & Publish |
+| **18** | Question Bank 2.0 | `/admin.html#pane-questions` | EXAM_MANAGER, ORG_ADMIN | Filterable questions table, difficulty/category filters, CSV import/export, question modal |
+| **19** | Candidates & Results | `/admin.html#pane-results` | EVALUATOR, ORG_ADMIN | Filterable candidate directory, attempt history, proctoring score pill, CSV export |
+| **20** | Scholarship Management | `/admin.html#pane-results` | ORG_ADMIN, SUPER_ADMIN | Fee waiver tiers, verified claim codes, coupon validation, institutional export |
+| **21** | Organization Management| `/admin.html#pane-organizations`| SUPER_ADMIN | Multi-tenant organization list, quota monitoring, status toggle (Active/Suspended) |
+| **22** | Organization Branding | `/admin.html#pane-branding` | ORG_ADMIN | Brand colors, logo upload, certificate customizer, team invitations table |
+| **23** | User & RBAC Management | `/admin.html#pane-users` | SUPER_ADMIN, ORG_ADMIN | Internal administrator roster, role assignment (Viewer, Evaluator, Manager, Admin) |
+| **—** | Page Not Found | `/404.html` | Global Public | Luxury Midnight card with 404 display, navigation links |
+| **—** | Access Restricted | `/403.html` | Global Public | Luxury Midnight card with 403 display, clearance guidance |
+
+### 11.3 Application Shell Architecture
+- Both candidate and admin portals feature the responsive `.app-shell`:
+  - **Left Sidebar (`.app-sidebar`)**: Fixed on desktop (260px), dark midnight surface, brand wordmark, icon-driven navigation tabs, user avatar badge, and signout button.
+  - **Main Stage (`.app-main`)**: Fluid Ivory canvas (`#F5F3EF`), sticky action bar, breadcrumbs, elevated cards, and responsive tables.
+- Zero framework dependencies: Pure Vanilla JavaScript, DOM API, and CSS custom property theming.

@@ -1,48 +1,197 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aspire by Adyapan — Scholarship Test Registration</title>
-<link rel="stylesheet" href="/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08090B">
+  <title>Create Account — Aspire by Adyapan</title>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/png" href="/assets/logo/aspire-favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo/aspire-favicon.png">
+  <style>
+    body {
+      background-color: var(--color-ivory);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .reg-header {
+      background: var(--color-midnight);
+      color: var(--color-text-on-dark);
+      padding: 18px clamp(20px, 4vw, 48px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--color-dark-border);
+    }
+    .reg-wrap {
+      flex: 1;
+      max-width: 760px;
+      margin: 40px auto;
+      padding: 0 20px;
+      width: 100%;
+    }
+    .reg-card {
+      background: var(--color-light-card);
+      border: 1px solid var(--color-light-border);
+      border-radius: 20px;
+      padding: clamp(28px, 4.5vw, 48px);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
+      position: relative;
+    }
+    .reg-card::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+    }
+    .reg-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      color: var(--color-gold-deep);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .reg-card h1 {
+      font-size: clamp(26px, 3.2vw, 36px);
+      margin-bottom: 8px;
+    }
+    .reg-sub {
+      color: var(--color-text-secondary);
+      font-size: 0.95rem;
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+    .form-section-divider {
+      height: 1px;
+      background: var(--color-light-border);
+      margin: 24px 0 16px;
+    }
+    .reg-footer-note {
+      font-size: 0.8rem;
+      color: var(--color-text-secondary);
+      margin-top: 20px;
+      line-height: 1.6;
+      border-top: 1px solid var(--color-light-border);
+      padding-top: 16px;
+      text-align: center;
+    }
+    .site-mini-footer {
+      background: var(--color-midnight);
+      color: var(--color-text-muted-on-dark);
+      padding: 20px;
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      border-top: 1px solid var(--color-dark-border);
+    }
+  </style>
 </head>
 <body>
-<div class="topbar"><div class="logo">ady.</div><div><strong>Aspire by Adyapan</strong><div class="tag">Aspire. Achieve. Adyapan.</div></div></div>
-<div class="wrap">
-  <div class="card">
-    <h1>Aspire Scholarship Test</h1>
-    <p class="sub">Take the test, earn a scholarship of up to 100% on Adyapan courses, and get your certificate instantly.</p>
-    <form id="regForm">
-      <label>Full name *</label>
-      <input id="name" required placeholder="Your full name">
-      <div class="row">
-        <div><label>Mobile number *</label><input id="phone" required placeholder="10-digit mobile number"></div>
-        <div><label>Email</label><input id="email" type="email" placeholder="you@example.com"></div>
-      </div>
-      <div class="row">
-        <div><label>College</label><input id="college" placeholder="College name"></div>
-        <div><label>City</label><input id="city" placeholder="City"></div>
-      </div>
-      <div class="row">
-        <div><label>Graduation year</label>
-          <select id="grad_year">
-            <option value="">Select</option><option>2024</option><option>2025</option><option>2026</option><option>2027</option><option>2028</option>
-          </select></div>
-        <div><label>Domain track</label>
-          <select id="track">
-            <option value="">Select</option><option>AI / Data</option><option>Web Development</option><option>Cloud / DevOps</option><option>Cybersecurity</option><option>Other</option>
-          </select></div>
-      </div>
-      <label>College / campaign code (if you have one)</label>
-      <input id="campaign_code" placeholder="e.g. JNTUH-2026">
-      <button id="regBtn" class="btn" type="submit">Continue to Test Instructions</button>
-      <div id="regErr" class="err"></div>
-      <p class="sub" style="margin-top:16px;font-size:13px">One attempt per mobile number. Your details are used only for the test and scholarship process.</p>
-    </form>
-  </div>
-</div>
-<script src="/js/config.js"></script>
-<script src="/js/common.js"></script>
-<script src="/js/register.js"></script>
+  <!-- Branded Header -->
+  <header class="reg-header">
+    <a class="brand-link" href="/landing.html">
+      <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire by Adyapan" style="height:34px;width:auto;display:block">
+      <span class="brand-title" style="display:none">ASPIRE<span class="brand-dot">.</span></span>
+      <span class="brand-subtitle" style="display:none">BY ADYAPAN</span>
+    </a>
+    <div style="display:flex;align-items:center;gap:16px">
+      <span style="font-size:0.85rem;color:var(--color-text-muted-on-dark);display:none;@media(min-width:600px){display:inline}">Already registered?</span>
+      <a class="btn ghost small" href="/login.html" style="color:var(--color-text-on-dark);border-color:var(--color-dark-border)">Sign In ↗</a>
+    </div>
+  </header>
+
+  <!-- Registration Stage -->
+  <main class="reg-wrap">
+    <div class="reg-card">
+      <div class="reg-eyebrow">CANDIDATE ONBOARDING</div>
+      <h1>Create Account</h1>
+      <p class="reg-sub">Take the first step towards your scholarship. Complete this one-time profile to begin your evaluation.</p>
+
+      <form id="regForm">
+        <label for="name">Full name *</label>
+        <input id="name" required placeholder="e.g. Maya Sharma">
+
+        <div class="row">
+          <div>
+            <label for="phone">Mobile number *</label>
+            <input id="phone" required placeholder="10-digit mobile number" pattern="[0-9]{10}">
+          </div>
+          <div>
+            <label for="email">Email address</label>
+            <input id="email" type="email" placeholder="you@example.com">
+          </div>
+        </div>
+
+        <div class="form-section-divider" aria-hidden="true"></div>
+
+        <div class="row">
+          <div>
+            <label for="college">College / University</label>
+            <input id="college" placeholder="College name">
+          </div>
+          <div>
+            <label for="city">City</label>
+            <input id="city" placeholder="City">
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="grad_year">Graduation year</label>
+            <select id="grad_year">
+              <option value="">Select year</option>
+              <option>2024</option>
+              <option>2025</option>
+              <option>2026</option>
+              <option>2027</option>
+              <option>2028</option>
+            </select>
+          </div>
+          <div>
+            <label for="track">Domain track</label>
+            <select id="track">
+              <option value="">Select track</option>
+              <option>AI / Data</option>
+              <option>Web Development</option>
+              <option>Cloud / DevOps</option>
+              <option>Cybersecurity</option>
+              <option>Other</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="campaign_code">College / Campaign code (Optional)</label>
+        <input id="campaign_code" placeholder="e.g. JNTUH-2026">
+
+        <button id="regBtn" class="btn" type="submit" style="width:100%;margin-top:28px">
+          <span>Continue to Test Instructions</span>
+          <span aria-hidden="true">↗</span>
+        </button>
+
+        <div id="regErr" class="err"></div>
+
+        <p class="reg-footer-note">
+          One attempt per candidate mobile number. Your information is securely handled and used strictly for evaluation, grading, and scholarship disbursement.
+        </p>
+      </form>
+    </div>
+  </main>
+
+  <footer class="site-mini-footer" style="display:flex;align-items:center;justify-content:center;gap:10px">
+    <img src="/assets/logo/aspire-submark-white.png" alt="Aspire" style="height:18px;width:auto;opacity:0.75">
+    <span>ASPIRE. ACHIEVE. ADYAPAN. &copy; 2026 ALL RIGHTS RESERVED.</span>
+  </footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/register.js"></script>
 </body>
 </html>

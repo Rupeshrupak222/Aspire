@@ -3,1239 +3,1413 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aspire — Admin Panel</title>
+<title>Aspire — Administrative Suite</title>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
 <link rel="stylesheet" href="/css/style.css">
+<link rel="icon" type="image/png" href="/assets/logo/aspire-favicon.png">
+<link rel="apple-touch-icon" href="/assets/logo/aspire-favicon.png">
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 </head>
-<body>
-<div class="topbar">
+<body style="background-color: var(--color-midnight);">
+
+<!-- Hidden legacy topbar container for backward compatibility -->
+<div class="topbar" style="display:none">
   <div class="logo">ady.</div>
-  <div>
-    <strong>Aspire Admin</strong>
-    <span id="roleBadge" class="tag" style="display:none">internal panel</span>
-  </div>
-  <div id="userMenu" style="margin-left:auto;display:none;align-items:center;gap:12px">
-    <span id="userNameDisplay" style="font-size:14px;color:var(--muted)"></span>
-    <button id="logoutBtn" class="btn small ghost" style="margin:0">Log out</button>
+  <div><strong>Aspire Admin</strong></div>
+</div>
+
+<!-- =========================================================================
+     SCREEN 13: ADMINISTRATIVE AUTHENTICATION (Midnight Luxury)
+     ========================================================================= -->
+<div id="loginBox" class="admin-login-screen">
+  <div class="admin-login-card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+      <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire by Adyapan" style="height:38px;width:auto">
+      <span class="status-badge" style="background:rgba(255,201,0,0.15);color:var(--color-gold);border:1px solid rgba(255,201,0,0.3);font-size:0.65rem;letter-spacing:0.1em;padding:4px 8px">INTERNAL CONSOLE</span>
+    </div>
+    
+    <span style="font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--color-gold);display:block;margin-bottom:6px">GOVERNANCE & EVALUATION</span>
+    <h1 style="font-family:var(--font-display);font-size:2rem;margin:0 0 8px 0;color:var(--color-text-on-dark)">Admin Portal</h1>
+    <p class="sub" style="color:var(--color-text-muted-on-dark);font-size:0.875rem;margin-bottom:24px;line-height:1.5">
+      Sign in with institutional credentials to manage assessments, monitor candidate performance, and evaluate psychometric telemetry.
+    </p>
+
+    <div id="loginErr" class="err" style="display:none;margin-bottom:16px"></div>
+
+    <label for="adminEmailInput" style="display:block;font-size:0.775rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-text-muted-on-dark);margin-bottom:6px">Email address</label>
+    <input id="adminEmailInput" type="email" placeholder="admin@adyapan.internal" autocomplete="email" style="width:100%;margin-bottom:16px">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <label for="adminPasswordInput" style="font-size:0.775rem;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--color-text-muted-on-dark);margin:0">Password</label>
+      <a href="/forgot-password.html" style="font-size:0.75rem;color:var(--color-gold);text-decoration:none">Forgot?</a>
+    </div>
+    <div style="position:relative;margin-bottom:20px">
+      <input id="adminPasswordInput" type="password" placeholder="••••••••" autocomplete="current-password" style="width:100%;margin-bottom:0;padding-right:60px">
+      <button type="button" id="adminTogglePassword" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--color-text-muted-on-dark);font-size:0.75rem;cursor:pointer;padding:4px">Show</button>
+    </div>
+
+    <button id="loginBtn" class="btn" style="width:100%;padding:14px;font-weight:600;font-size:0.95rem">Sign In to Console &rarr;</button>
+
+    <div style="margin-top:28px;padding-top:16px;border-top:1px solid var(--color-dark-border);display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;color:var(--color-text-muted-on-dark)">
+      <span style="display:flex;align-items:center;gap:6px">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--color-success)"></span>
+        Tenant Isolation Enforced
+      </span>
+      <a href="/login.html" style="color:var(--color-gold);text-decoration:none;font-weight:500">Candidate Portal &rarr;</a>
+    </div>
   </div>
 </div>
 
-<div class="wrap">
-  <!-- Login Box -->
-  <div id="loginBox" class="card" style="max-width:440px;margin:60px auto">
-    <h1>Admin Login</h1>
-    <p class="sub">Sign in with your administrative credentials.</p>
-    <div id="loginErr" class="err" style="display:none;margin-bottom:12px"></div>
-    <label>Email address</label>
-    <input id="adminEmailInput" type="email" placeholder="admin@adyapan.internal" autocomplete="email">
-    <label>Password</label>
-    <input id="adminPasswordInput" type="password" placeholder="••••••••" autocomplete="current-password">
-    <button id="loginBtn" class="btn" style="margin-top:12px">Log in</button>
-  </div>
-
-  <!-- Authenticated Admin Area -->
-  <div id="adminBox" style="display:none">
-    <div id="judge0note" style="display:none"></div>
-    <div class="tabs" id="adminTabs">
-      <button class="tab" data-tab="dashboard" id="tab-dashboard">Dashboard</button>
-      <button class="tab" data-tab="exams" id="tab-exams">Exams</button>
-      <button class="tab" data-tab="questions" id="tab-questions">Questions</button>
-      <button class="tab" data-tab="config" id="tab-config">Test Config</button>
-      <button class="tab" data-tab="results" id="tab-results">Results</button>
-      <button class="tab" data-tab="report" id="tab-report">College Report</button>
-      <button class="tab" data-tab="users" id="tab-users" style="display:none">Users</button>
-      <button class="tab" data-tab="organizations" id="tab-organizations" style="display:none">Organizations</button>
-      <button class="tab" data-tab="branding" id="tab-branding" style="display:none">Branding & Profile</button>
-    </div>
-
-    <!-- SaaS Analytics Dashboard (Day 18) -->
-    <div class="tabpane card" id="pane-dashboard" style="display:none">
-      <div class="dash-header">
-        <div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <h2 style="margin:0">Analytics Dashboard</h2>
-            <span id="dashOrgBadge" class="status-badge status-live">Adyapan</span>
-          </div>
-          <span style="font-size:13px;color:var(--muted)">Authoritative assessment metrics, candidate performance trends, and risk telemetry.</span>
+<!-- =========================================================================
+     AUTHENTICATED ADMIN APPLICATION SHELL
+     ========================================================================= -->
+<div id="adminBox" style="display:none">
+  <div class="app-shell">
+    
+    <!-- Left Luxury Sidebar Navigation -->
+    <aside class="app-sidebar">
+      <div>
+        <div class="sidebar-header" style="margin-bottom:24px">
+          <a href="/admin.html" style="text-decoration:none;display:block">
+            <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire Administrative Suite" style="height:36px;width:auto;display:block">
+          </a>
         </div>
-        <div class="dash-filters">
-          <div id="dashSuperAdminScope" style="display:none;align-items:center;gap:6px">
-            <label style="margin:0;font-size:12px;color:var(--muted)">Scope:</label>
-            <select id="dashOrgScopeSelect" style="width:auto;margin:0;padding:6px 10px;font-size:13px">
-              <option value="platform">All Organizations (Platform)</option>
-            </select>
-          </div>
-          <select id="dashPeriodSelect" style="width:auto;margin:0;padding:6px 10px;font-size:13px">
-            <option value="today">Today</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d" selected>Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-            <option value="custom">Custom Range</option>
-          </select>
-          <div id="dashCustomDates" style="display:none;align-items:center;gap:6px">
-            <input type="date" id="dashStartDate" style="width:auto;margin:0;padding:5px 8px;font-size:13px">
-            <span style="color:var(--muted);font-size:12px">to</span>
-            <input type="date" id="dashEndDate" style="width:auto;margin:0;padding:5px 8px;font-size:13px">
-            <button id="dashApplyCustomBtn" class="btn small" style="margin:0;padding:6px 10px">Apply</button>
-          </div>
-          <select id="dashExamSelect" style="width:auto;max-width:200px;margin:0;padding:6px 10px;font-size:13px">
-            <option value="">All Exams</option>
-          </select>
-          <button id="dashRefreshBtn" class="btn small ghost" style="margin:0;padding:6px 12px">&#8635; Refresh</button>
+
+        <!-- Navigation Tabs (Preserves exact #adminTabs and #tab-* elements) -->
+        <div class="sidebar-nav-heading">ANALYTICS & EXAMS</div>
+        <div class="tabs" id="adminTabs">
+          <button class="tab" data-tab="dashboard" id="tab-dashboard">
+            <span class="nav-icon">&#9638;</span> Dashboard
+          </button>
+          <button class="tab" data-tab="exams" id="tab-exams">
+            <span class="nav-icon">&#128221;</span> Exams
+          </button>
+          <button class="tab" data-tab="questions" id="tab-questions">
+            <span class="nav-icon">&#128218;</span> Questions
+          </button>
+
+          <div class="sidebar-nav-heading" style="margin-top:14px">EVALUATION & ROSTER</div>
+          <button class="tab" data-tab="results" id="tab-results">
+            <span class="nav-icon">&#128101;</span> Results & Slabs
+          </button>
+          <button class="tab" data-tab="report" id="tab-report">
+            <span class="nav-icon">&#127963;</span> College Report
+          </button>
+
+          <div class="sidebar-nav-heading" style="margin-top:14px">GOVERNANCE & SYSTEM</div>
+          <button class="tab" data-tab="config" id="tab-config">
+            <span class="nav-icon">&#9881;</span> Test Config
+          </button>
+          <button class="tab" data-tab="users" id="tab-users" style="display:none">
+            <span class="nav-icon">&#128273;</span> Users & RBAC
+          </button>
+          <button class="tab" data-tab="organizations" id="tab-organizations" style="display:none">
+            <span class="nav-icon">&#127970;</span> Organizations
+          </button>
+          <button class="tab" data-tab="branding" id="tab-branding" style="display:none">
+            <span class="nav-icon">&#127912;</span> Profile & Branding
+          </button>
         </div>
       </div>
 
-      <div id="dashErrorBanner" class="err" style="display:none;margin-bottom:16px"></div>
-
-      <!-- 8 SaaS KPI Metric Cards -->
-      <div class="kpi-grid">
-        <div class="kpi-card" id="cardTotalStudents">
-          <div class="kpi-label">Total Students</div>
-          <div class="kpi-value" id="kpiTotalStudents">—</div>
-          <div class="kpi-trend" id="kpiTrendStudents"></div>
-          <div class="kpi-subtext">Registered candidates</div>
-        </div>
-
-        <div class="kpi-card" id="cardTotalExams">
-          <div class="kpi-label">Total Exams</div>
-          <div class="kpi-value" id="kpiTotalExams">—</div>
-          <div class="kpi-trend" id="kpiTrendExams"></div>
-          <div class="kpi-subtext">Authored assessments</div>
-        </div>
-
-        <div class="kpi-card" id="cardActiveExams">
-          <div class="kpi-label">Active Exams</div>
-          <div class="kpi-value" id="kpiActiveExams">—</div>
-          <div class="kpi-trend" id="kpiTrendActiveExams"></div>
-          <div class="kpi-subtext">PUBLISHED & LIVE</div>
-        </div>
-
-        <div class="kpi-card" id="cardCompletedAttempts">
-          <div class="kpi-label">Completed Attempts</div>
-          <div class="kpi-value" id="kpiCompletedAttempts">—</div>
-          <div class="kpi-trend" id="kpiTrendAttempts"></div>
-          <div class="kpi-subtext">Submitted exams</div>
-        </div>
-
-        <div class="kpi-card" id="cardAverageScore">
-          <div class="kpi-label">Average Score</div>
-          <div class="kpi-value" id="kpiAverageScore">—</div>
-          <div class="kpi-trend" id="kpiTrendScore"></div>
-          <div class="kpi-subtext">Across completed attempts</div>
-        </div>
-
-        <div class="kpi-card" id="cardPassRate">
-          <div class="kpi-label">Pass Rate</div>
-          <div class="kpi-value" id="kpiPassRate">—</div>
-          <div class="kpi-trend" id="kpiTrendPassRate"></div>
-          <div class="kpi-subtext" id="kpiPassRateRatio">Passed / eligible attempts</div>
-        </div>
-
-        <div class="kpi-card" id="cardScholarshipsAwarded">
-          <div class="kpi-label">Scholarships</div>
-          <div class="kpi-value" id="kpiScholarshipsAwarded">—</div>
-          <div class="kpi-trend" id="kpiTrendScholarships"></div>
-          <div class="kpi-subtext">Candidates receiving aid</div>
-        </div>
-
-        <div class="kpi-card" id="cardCertificatesGenerated">
-          <div class="kpi-label">Certificates</div>
-          <div class="kpi-value" id="kpiCertificatesGenerated">—</div>
-          <div class="kpi-trend" id="kpiTrendCertificates"></div>
-          <div class="kpi-subtext">Verified credentials</div>
+      <!-- Sidebar Footer with Administrator Identity & Signout -->
+      <div class="sidebar-footer">
+        <div id="userMenu" style="display:none;align-items:center;justify-content:space-between;width:100%">
+          <div style="display:flex;align-items:center;gap:10px;overflow:hidden">
+            <div class="user-avatar-mini" id="adminAvatarInitials" style="background:transparent;border:1px solid var(--color-gold);padding:3px"><img src="/assets/logo/aspire-submark-white.png" alt="Admin" style="width:24px;height:24px;object-fit:contain"></div>
+            <div style="display:flex;flex-direction:column;gap:2px;overflow:hidden">
+              <span id="userNameDisplay" style="font-size:0.8rem;font-weight:600;color:var(--color-text-on-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px">Admin</span>
+              <span id="roleBadge" class="status-badge" style="display:none;width:fit-content;font-size:0.65rem;padding:2px 6px">ADMIN</span>
+            </div>
+          </div>
+          <button id="logoutBtn" class="btn small ghost" title="Sign out" style="margin:0;padding:6px 10px;font-size:0.75rem;color:var(--color-text-muted-on-dark)">&#9211;</button>
         </div>
       </div>
+    </aside>
 
-      <!-- 5 Visual Charts Grid -->
-      <div class="charts-grid">
-        <!-- Attempts Over Time (Full Width) -->
-        <div class="chart-card full-width">
-          <div class="chart-header">
-            <div>
-              <h3 class="chart-title">Attempts Over Time</h3>
-              <div class="chart-subtitle">Daily assessment volume comparing completed, in-progress, and total sessions</div>
-            </div>
-          </div>
-          <div class="chart-body" id="bodyAttemptsChart">
-            <canvas id="chartAttemptsOverTime"></canvas>
-          </div>
-        </div>
+    <!-- Main Content Stage -->
+    <main class="app-main" style="background-color: var(--color-ivory); min-height: 100vh;">
+      
+      <!-- System Notification Banner (Judge0) -->
+      <div id="judge0note" style="display:none;margin-bottom:20px"></div>
 
-        <!-- Score Distribution -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <div>
-              <h3 class="chart-title">Score Distribution</h3>
-              <div class="chart-subtitle">Candidate performance clustered into percentage score buckets</div>
-            </div>
-          </div>
-          <div class="chart-body" id="bodyScoreChart">
-            <canvas id="chartScoreDistribution"></canvas>
-          </div>
-        </div>
-
-        <!-- Completion Rate -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <div>
-              <h3 class="chart-title">Completion Rate</h3>
-              <div class="chart-subtitle">Proportion of attempts completed, currently in-progress, and expired</div>
-            </div>
-          </div>
-          <div class="chart-body" id="bodyCompletionChart">
-            <canvas id="chartCompletionRate"></canvas>
-          </div>
-        </div>
-
-        <!-- College Distribution -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <div>
-              <h3 class="chart-title">College Distribution</h3>
-              <div class="chart-subtitle">Candidate breakdown across registered colleges and universities</div>
-            </div>
-          </div>
-          <div class="chart-body" id="bodyCollegeChart">
-            <canvas id="chartCollegeDistribution"></canvas>
-          </div>
-        </div>
-
-        <!-- Question Performance -->
-        <div class="chart-card">
-          <div class="chart-header">
-            <div>
-              <h3 class="chart-title">Question Accuracy</h3>
-              <div class="chart-subtitle">Average accuracy percentage across evaluated questions</div>
-            </div>
-          </div>
-          <div class="chart-body" id="bodyQuestionChart">
-            <canvas id="chartQuestionPerformance"></canvas>
-          </div>
-        </div>
-
-        <!-- Platform Organizations Overview Table (SUPER_ADMIN only) -->
-        <div class="chart-card full-width" id="superAdminOrgBreakdownCard" style="display:none">
-          <div class="chart-header">
-            <div>
-              <h3 class="chart-title">Platform Organizations Overview</h3>
-              <div class="chart-subtitle">Aggregated metrics and activity breakdown per organization tenant</div>
-            </div>
-          </div>
-          <div style="overflow-x:auto">
-            <table class="data" id="platformOrgsTable">
-              <thead>
-                <tr>
-                  <th>Organization</th>
-                  <th>Status</th>
-                  <th>Total Students</th>
-                  <th>Active Exams</th>
-                  <th>Completed Attempts</th>
-                  <th>Avg Score</th>
-                </tr>
-              </thead>
-              <tbody id="platformOrgsBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Exams Tab (Exam Builder 2.0) -->
-    <div class="tabpane card" id="pane-exams" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <div>
-          <h2 style="margin:0">Exam Builder 2.0</h2>
-          <span style="font-size:13px;color:var(--muted)">Author, configure, publish, and version independent multi-section assessments.</span>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button id="createExamBtn" class="btn small">+ Create Exam</button>
-        </div>
-      </div>
-
-      <!-- Filters & Search Bar for Exams -->
-      <div class="card" style="background:#F9FAFB;padding:14px;margin-bottom:16px;border:1px solid var(--line)">
-        <div class="row" style="margin-bottom:8px">
-          <div style="flex:2">
-            <input id="examSearchInput" placeholder="Search exams by name, code, or description..." style="margin:0">
-          </div>
-          <div style="flex:1">
-            <select id="examStatusFilter" style="margin:0">
-              <option value="">All Statuses</option>
-              <option value="DRAFT">DRAFT</option>
-              <option value="REVIEW">REVIEW</option>
-              <option value="PUBLISHED">PUBLISHED</option>
-              <option value="LIVE">LIVE</option>
-              <option value="CLOSED">CLOSED</option>
-              <option value="ARCHIVED">ARCHIVED</option>
-            </select>
-          </div>
+      <!-- =====================================================================
+           SCREEN 14: SAAS ANALYTICS DASHBOARD (Day 18)
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-dashboard" style="display:none">
+        <div class="dash-header">
           <div>
-            <button id="applyExamFiltersBtn" class="btn small" style="margin:0">Filter</button>
-            <button id="resetExamFiltersBtn" class="btn small ghost" style="margin:0">Reset</button>
+            <div style="display:flex;align-items:center;gap:10px">
+              <h2 style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">Analytics Dashboard</h2>
+              <span id="dashOrgBadge" class="status-badge status-live">Adyapan</span>
+            </div>
+            <span style="font-size:0.85rem;color:var(--color-text-secondary);display:block;margin-top:4px">
+              Authoritative assessment metrics, candidate performance trends, and risk telemetry.
+            </span>
+          </div>
+
+          <div class="dash-filters">
+            <div id="dashSuperAdminScope" style="display:none;align-items:center;gap:6px">
+              <label style="margin:0;font-size:0.75rem;font-weight:600;color:var(--color-text-secondary);text-transform:uppercase">Scope:</label>
+              <select id="dashOrgScopeSelect" style="width:auto;margin:0;padding:6px 12px;font-size:0.825rem">
+                <option value="platform">All Organizations (Platform)</option>
+              </select>
+            </div>
+            <select id="dashPeriodSelect" style="width:auto;margin:0;padding:6px 12px;font-size:0.825rem">
+              <option value="today">Today</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d" selected>Last 30 Days</option>
+              <option value="90d">Last 90 Days</option>
+              <option value="custom">Custom Range</option>
+            </select>
+            <div id="dashCustomDates" style="display:none;align-items:center;gap:6px">
+              <input type="date" id="dashStartDate" style="width:auto;margin:0;padding:5px 8px;font-size:0.825rem">
+              <span style="color:var(--color-text-muted);font-size:0.8rem">to</span>
+              <input type="date" id="dashEndDate" style="width:auto;margin:0;padding:5px 8px;font-size:0.825rem">
+              <button id="dashApplyCustomBtn" class="btn small" style="margin:0;padding:6px 12px">Apply</button>
+            </div>
+            <select id="dashExamSelect" style="width:auto;max-width:220px;margin:0;padding:6px 12px;font-size:0.825rem">
+              <option value="">All Exams</option>
+            </select>
+            <button id="dashRefreshBtn" class="btn small ghost" style="margin:0;padding:6px 14px">&#8635; Refresh</button>
           </div>
         </div>
-      </div>
 
-      <!-- Exams Table -->
-      <table class="data" id="examsTable">
-        <thead>
-          <tr>
-            <th>Exam / Code</th>
-            <th>Status</th>
-            <th>Version</th>
-            <th>Sections</th>
-            <th>Duration</th>
-            <th>Marks</th>
-            <th>Passing</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="examsBody"></tbody>
-      </table>
+        <div id="dashErrorBanner" class="err" style="display:none;margin-bottom:20px"></div>
 
-      <!-- Pagination Controls for Exams -->
-      <div id="examPaginationBar" style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:13px;color:var(--muted)">
-        <span id="examPaginationInfo">Showing 0 of 0 exams</span>
-        <div style="display:flex;gap:8px">
-          <button id="examPrevPageBtn" class="btn small ghost" style="margin:0" disabled>Previous</button>
-          <span id="examCurrentPage" style="align-self:center;font-weight:600">Page 1</span>
-          <button id="examNextPageBtn" class="btn small ghost" style="margin:0" disabled>Next</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Exam Analytics Tab (Day 19) -->
-    <div class="tabpane card" id="pane-exam-analytics" style="display:none">
-      <!-- Header -->
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:14px">
-        <div>
-          <button id="backToExamsBtn" class="btn small ghost" style="margin-bottom:8px">&larr; Back to Exams</button>
-          <div style="display:flex;align-items:center;gap:10px">
-            <h2 id="analyticsExamName" style="margin:0">Exam Analytics</h2>
-            <span id="analyticsExamStatus" class="status-badge status-live">PUBLISHED</span>
-          </div>
-          <div id="analyticsExamMeta" style="font-size:13px;color:var(--muted);margin-top:4px">Loading exam metadata...</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <select id="analyticsPeriodSelect" style="width:auto;margin:0;padding:6px 10px;font-size:13px">
-            <option value="all" selected>All Time</option>
-            <option value="today">Today</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-          </select>
-          <button id="analyticsRefreshBtn" class="btn small ghost" style="margin:0;padding:6px 12px">&#8635; Refresh</button>
-        </div>
-      </div>
-
-      <div id="analyticsErrorBanner" class="err" style="display:none;margin-bottom:16px"></div>
-
-      <!-- Section Navigation Pills -->
-      <div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:10px;overflow-x:auto">
-        <button class="btn small analytics-nav-btn" data-sec="overview" style="background:#4F46E5;color:#fff">Overview & Funnel</button>
-        <button class="btn small ghost analytics-nav-btn" data-sec="questions">Questions & Discrimination</button>
-        <button class="btn small ghost analytics-nav-btn" data-sec="coding">Coding Execution</button>
-        <button class="btn small ghost analytics-nav-btn" data-sec="performance">Performance & Distribution</button>
-        <button class="btn small ghost analytics-nav-btn" data-sec="candidates">Candidate Roster</button>
-      </div>
-
-      <!-- Tab Sub-Section 1: Overview & Funnel -->
-      <div id="analyticsSecOverview" class="analytics-sub-sec">
-        <!-- 6 KPI Metric Cards -->
+        <!-- 8 SaaS KPI Metric Cards -->
         <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-label">Registered Candidates</div>
-            <div class="kpi-value" id="kpiExamRegistered">—</div>
-            <div class="kpi-subtext">Total candidate signups</div>
+          <div class="kpi-card" id="cardTotalStudents">
+            <div class="kpi-label">Total Students</div>
+            <div class="kpi-value" id="kpiTotalStudents">—</div>
+            <div class="kpi-trend" id="kpiTrendStudents"></div>
+            <div class="kpi-subtext">Registered candidates</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Started Candidates</div>
-            <div class="kpi-value" id="kpiExamStarted">—</div>
-            <div class="kpi-subtext" id="kpiExamStartRate">0% conversion</div>
+
+          <div class="kpi-card" id="cardTotalExams">
+            <div class="kpi-label">Total Exams</div>
+            <div class="kpi-value" id="kpiTotalExams">—</div>
+            <div class="kpi-trend" id="kpiTrendExams"></div>
+            <div class="kpi-subtext">Authored assessments</div>
           </div>
-          <div class="kpi-card">
+
+          <div class="kpi-card" id="cardActiveExams">
+            <div class="kpi-label">Active Exams</div>
+            <div class="kpi-value" id="kpiActiveExams">—</div>
+            <div class="kpi-trend" id="kpiTrendActiveExams"></div>
+            <div class="kpi-subtext">PUBLISHED & LIVE</div>
+          </div>
+
+          <div class="kpi-card" id="cardCompletedAttempts">
             <div class="kpi-label">Completed Attempts</div>
-            <div class="kpi-value" id="kpiExamCompleted">—</div>
-            <div class="kpi-subtext" id="kpiExamCompletionRate">0% completion</div>
+            <div class="kpi-value" id="kpiCompletedAttempts">—</div>
+            <div class="kpi-trend" id="kpiTrendAttempts"></div>
+            <div class="kpi-subtext">Submitted exams</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Passed Candidates</div>
-            <div class="kpi-value" id="kpiExamPassed" style="color:var(--success, #059669)">—</div>
-            <div class="kpi-subtext" id="kpiExamPassRate">0% pass rate</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Failed Candidates</div>
-            <div class="kpi-value" id="kpiExamFailed" style="color:var(--danger, #DC2626)">—</div>
-            <div class="kpi-subtext" id="kpiExamFailRate">0% fail rate</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Abandoned / Expired</div>
-            <div class="kpi-value" id="kpiExamAbandoned" style="color:#D97706">—</div>
-            <div class="kpi-subtext" id="kpiExamAbandonRate">0% drop-off</div>
-          </div>
-        </div>
 
-        <!-- Candidate Funnel Visual Display -->
-        <div class="card" style="background:#F9FAFB;padding:16px;border:1px solid var(--line);margin-bottom:20px">
-          <h3 style="margin-top:0;margin-bottom:12px">Candidate Funnel Progression</h3>
-          <div id="funnelContainer" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between">
-            <!-- Funnel stages injected dynamically -->
-          </div>
-        </div>
-
-        <!-- Quick Summary Metrics -->
-        <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr))">
-          <div class="kpi-card">
+          <div class="kpi-card" id="cardAverageScore">
             <div class="kpi-label">Average Score</div>
-            <div class="kpi-value" id="kpiExamAvgScore">—</div>
-            <div class="kpi-subtext">Mean percentage</div>
+            <div class="kpi-value" id="kpiAverageScore">—</div>
+            <div class="kpi-trend" id="kpiTrendScore"></div>
+            <div class="kpi-subtext">Across completed attempts</div>
           </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Median Score</div>
-            <div class="kpi-value" id="kpiExamMedianScore">—</div>
-            <div class="kpi-subtext">50th percentile (P50)</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Highest Score</div>
-            <div class="kpi-value" id="kpiExamHighestScore">—</div>
-            <div class="kpi-subtext">Maximum achieved</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Avg Duration</div>
-            <div class="kpi-value" id="kpiExamAvgDuration">—</div>
-            <div class="kpi-subtext">Minutes to complete</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Scholarships Awarded</div>
-            <div class="kpi-value" id="kpiExamScholarships">—</div>
-            <div class="kpi-subtext">Eligible recipients</div>
-          </div>
-        </div>
-      </div>
 
-      <!-- Tab Sub-Section 2: Questions & Discrimination -->
-      <div id="analyticsSecQuestions" class="analytics-sub-sec" style="display:none">
-        <div class="card" style="background:#F9FAFB;padding:14px;margin-bottom:16px;border:1px solid var(--line)">
-          <div class="row" style="margin-bottom:8px;gap:8px;flex-wrap:wrap">
-            <div style="flex:2;min-width:200px">
-              <input id="qAnalyticsSearch" placeholder="Search questions by text or title..." style="margin:0">
-            </div>
-            <div style="flex:1;min-width:130px">
-              <select id="qAnalyticsTypeFilter" style="margin:0">
-                <option value="all">All Types</option>
-                <option value="mcq">MCQ Only</option>
-                <option value="code">Code Only</option>
-              </select>
-            </div>
-            <div style="flex:1;min-width:140px">
-              <select id="qAnalyticsDifficultyFilter" style="margin:0">
-                <option value="all">All Difficulties</option>
-                <option value="VERY_EASY">Very Easy (&ge;85%)</option>
-                <option value="EASY">Easy (70-84%)</option>
-                <option value="MODERATE">Moderate (40-69%)</option>
-                <option value="DIFFICULT">Difficult (20-39%)</option>
-                <option value="VERY_DIFFICULT">Very Difficult (&lt;20%)</option>
-              </select>
-            </div>
-            <div style="flex:1;min-width:140px">
-              <select id="qAnalyticsSortFilter" style="margin:0">
-                <option value="order_asc">Default Order</option>
-                <option value="accuracy_asc">Lowest Accuracy First</option>
-                <option value="accuracy_desc">Highest Accuracy First</option>
-                <option value="discrimination_desc">Strongest Discrimination (D)</option>
-                <option value="marks_desc">Highest Marks First</option>
-              </select>
-            </div>
+          <div class="kpi-card" id="cardPassRate">
+            <div class="kpi-label">Pass Rate</div>
+            <div class="kpi-value" id="kpiPassRate">—</div>
+            <div class="kpi-trend" id="kpiTrendPassRate"></div>
+            <div class="kpi-subtext" id="kpiPassRateRatio">Passed / eligible attempts</div>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)">
-            <span id="qAnalyticsSampleBadge">Sample Size: 0 completed attempts</span>
-            <span>Method: Kelley's Upper/Lower 27% (N &ge; 10 required)</span>
+
+          <div class="kpi-card" id="cardScholarshipsAwarded">
+            <div class="kpi-label">Scholarships</div>
+            <div class="kpi-value" id="kpiScholarshipsAwarded">—</div>
+            <div class="kpi-trend" id="kpiTrendScholarships"></div>
+            <div class="kpi-subtext">Candidates receiving aid</div>
+          </div>
+
+          <div class="kpi-card" id="cardCertificatesGenerated">
+            <div class="kpi-label">Certificates</div>
+            <div class="kpi-value" id="kpiCertificatesGenerated">—</div>
+            <div class="kpi-trend" id="kpiTrendCertificates"></div>
+            <div class="kpi-subtext">Verified credentials</div>
           </div>
         </div>
 
-        <div style="overflow-x:auto">
-          <table class="data" id="examQuestionsTable">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Type</th>
-                <th>Question Title</th>
-                <th>Marks</th>
-                <th>Attempts</th>
-                <th>Correct %</th>
-                <th>Wrong %</th>
-                <th>Unanswered</th>
-                <th>Avg Time</th>
-                <th>Difficulty</th>
-                <th>Discrimination (D)</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="examQuestionsBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab Sub-Section 3: Coding Execution -->
-      <div id="analyticsSecCoding" class="analytics-sub-sec" style="display:none">
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-label">Coding Submissions</div>
-            <div class="kpi-value" id="kpiCodingTotal">—</div>
-            <div class="kpi-subtext" id="kpiCodingUniqueStudents">0 unique candidates</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Accepted / Correct</div>
-            <div class="kpi-value" id="kpiCodingAccepted" style="color:var(--success, #059669)">—</div>
-            <div class="kpi-subtext">All test cases passed</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Compiler Errors</div>
-            <div class="kpi-value" id="kpiCodingCompileErrors" style="color:var(--danger, #DC2626)">—</div>
-            <div class="kpi-subtext">Syntax & compilation failures</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Runtime Failures</div>
-            <div class="kpi-value" id="kpiCodingRuntimeErrors" style="color:#D97706">—</div>
-            <div class="kpi-subtext">Exceptions & non-zero exit</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Timeouts</div>
-            <div class="kpi-value" id="kpiCodingTimeouts" style="color:#B45309">—</div>
-            <div class="kpi-subtext">Time limit exceeded</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-label">Test Case Pass Rate</div>
-            <div class="kpi-value" id="kpiCodingTcPassRate">—</div>
-            <div class="kpi-subtext" id="kpiCodingTcRatio">0 / 0 evaluated</div>
-          </div>
-        </div>
-
-        <div style="margin-top:20px">
-          <h3>Coding Questions Breakdown</h3>
-          <table class="data">
-            <thead>
-              <tr>
-                <th>Question</th>
-                <th>Marks</th>
-                <th>Submissions</th>
-                <th>Submitters</th>
-                <th>Accepted</th>
-                <th>Compile Errors</th>
-                <th>Runtime Errors</th>
-                <th>Timeouts</th>
-                <th>Pass Rate</th>
-                <th>Avg Score</th>
-              </tr>
-            </thead>
-            <tbody id="examCodingQuestionsBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Tab Sub-Section 4: Performance & Distribution -->
-      <div id="analyticsSecPerformance" class="analytics-sub-sec" style="display:none">
+        <!-- 5 Visual Charts Grid -->
         <div class="charts-grid">
+          <!-- Attempts Over Time (Full Width) -->
+          <div class="chart-card full-width">
+            <div class="chart-header">
+              <div>
+                <h3 class="chart-title">Attempts Over Time</h3>
+                <div class="chart-subtitle">Daily assessment volume comparing completed, in-progress, and total sessions</div>
+              </div>
+            </div>
+            <div class="chart-body" id="bodyAttemptsChart">
+              <canvas id="chartAttemptsOverTime"></canvas>
+            </div>
+          </div>
+
           <!-- Score Distribution -->
           <div class="chart-card">
             <div class="chart-header">
               <div>
                 <h3 class="chart-title">Score Distribution</h3>
-                <div class="chart-subtitle">Completed attempt percentages grouped into 20% bins</div>
+                <div class="chart-subtitle">Candidate performance clustered into percentage score buckets</div>
               </div>
             </div>
-            <div class="chart-body" id="bodyExamScoreChart">
-              <canvas id="chartExamScoreDistribution"></canvas>
+            <div class="chart-body" id="bodyScoreChart">
+              <canvas id="chartScoreDistribution"></canvas>
             </div>
           </div>
 
-          <!-- Duration Distribution -->
+          <!-- Completion Rate -->
           <div class="chart-card">
             <div class="chart-header">
               <div>
-                <h3 class="chart-title">Completion Duration</h3>
-                <div class="chart-subtitle">Time elapsed from assessment start to submission</div>
+                <h3 class="chart-title">Completion Rate</h3>
+                <div class="chart-subtitle">Proportion of attempts completed, currently in-progress, and expired</div>
               </div>
             </div>
-            <div class="chart-body" id="bodyExamDurationChart">
-              <canvas id="chartExamDurationDistribution"></canvas>
+            <div class="chart-body" id="bodyCompletionChart">
+              <canvas id="chartCompletionRate"></canvas>
             </div>
           </div>
 
-          <!-- Pass / Fail Distribution -->
+          <!-- College Distribution -->
           <div class="chart-card">
             <div class="chart-header">
               <div>
-                <h3 class="chart-title">Pass vs Fail Outcome</h3>
-                <div class="chart-subtitle">Evaluated strictly using exam passing score threshold</div>
+                <h3 class="chart-title">College Distribution</h3>
+                <div class="chart-subtitle">Candidate breakdown across registered colleges and universities</div>
               </div>
             </div>
-            <div class="chart-body" id="bodyExamPassFailChart">
-              <canvas id="chartExamPassFail"></canvas>
+            <div class="chart-body" id="bodyCollegeChart">
+              <canvas id="chartCollegeDistribution"></canvas>
             </div>
           </div>
 
-          <!-- Category Performance -->
+          <!-- Question Performance -->
           <div class="chart-card">
             <div class="chart-header">
               <div>
-                <h3 class="chart-title">Category Accuracy</h3>
-                <div class="chart-subtitle">Performance breakdown across aptitude, technical & coding</div>
+                <h3 class="chart-title">Question Accuracy</h3>
+                <div class="chart-subtitle">Average accuracy percentage across evaluated questions</div>
               </div>
             </div>
-            <div class="chart-body" id="bodyExamCategoryChart">
-              <canvas id="chartExamCategoryPerformance"></canvas>
+            <div class="chart-body" id="bodyQuestionChart">
+              <canvas id="chartQuestionPerformance"></canvas>
             </div>
           </div>
-        </div>
 
-        <!-- Statistical Measures Card -->
-        <div class="card" style="background:#F9FAFB;padding:16px;border:1px solid var(--line);margin-top:20px">
-          <h3 style="margin-top:0;margin-bottom:12px">Descriptive Statistical Measures</h3>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px" id="examStatsGrid">
-            <!-- Injected dynamically -->
+          <!-- Platform Organizations Overview Table (SUPER_ADMIN only) -->
+          <div class="chart-card full-width" id="superAdminOrgBreakdownCard" style="display:none">
+            <div class="chart-header">
+              <div>
+                <h3 class="chart-title">Platform Organizations Overview</h3>
+                <div class="chart-subtitle">Aggregated metrics and activity breakdown per organization tenant</div>
+              </div>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="data" id="platformOrgsTable">
+                <thead>
+                  <tr>
+                    <th>Organization</th>
+                    <th>Status</th>
+                    <th>Total Students</th>
+                    <th>Active Exams</th>
+                    <th>Completed Attempts</th>
+                    <th>Avg Score</th>
+                  </tr>
+                </thead>
+                <tbody id="platformOrgsBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Tab Sub-Section 5: Candidate Roster -->
-      <div id="analyticsSecCandidates" class="analytics-sub-sec" style="display:none">
-        <div class="card" style="background:#F9FAFB;padding:14px;margin-bottom:16px;border:1px solid var(--line)">
-          <div class="row" style="margin-bottom:8px;gap:8px">
+      <!-- =====================================================================
+           SCREEN 16: EXAM BUILDER & MANAGEMENT (Exam Builder 2.0)
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-exams" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--color-light-border)">
+          <div>
+            <h2 style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">Exam Management</h2>
+            <span style="font-size:0.85rem;color:var(--color-text-secondary);display:block;margin-top:4px">
+              Author, configure, publish, and version independent multi-section assessments.
+            </span>
+          </div>
+          <div style="display:flex;gap:10px">
+            <button id="createExamBtn" class="btn small">+ Create Exam</button>
+          </div>
+        </div>
+
+        <!-- Filters & Search Bar for Exams -->
+        <div class="card" style="background:#FFFFFF;padding:16px;margin-bottom:20px;border:1px solid var(--color-light-border);border-radius:12px">
+          <div class="row" style="margin-bottom:0;align-items:center;gap:12px">
             <div style="flex:2">
-              <input id="candidateSearchInput" placeholder="Search candidate by name, email, or college..." style="margin:0">
+              <input id="examSearchInput" placeholder="Search exams by name, code, or description..." style="margin:0;width:100%">
             </div>
             <div style="flex:1">
-              <select id="candidateStatusFilter" style="margin:0">
-                <option value="all">All Candidates</option>
-                <option value="submitted">Completed Only</option>
-                <option value="passed">Passed Only</option>
-                <option value="failed">Failed Only</option>
-                <option value="abandoned">Abandoned / Expired</option>
-                <option value="in_progress">In-Progress</option>
+              <select id="examStatusFilter" style="margin:0;width:100%">
+                <option value="">All Statuses</option>
+                <option value="DRAFT">DRAFT</option>
+                <option value="REVIEW">REVIEW</option>
+                <option value="PUBLISHED">PUBLISHED</option>
+                <option value="LIVE">LIVE</option>
+                <option value="CLOSED">CLOSED</option>
+                <option value="ARCHIVED">ARCHIVED</option>
               </select>
             </div>
-            <div style="flex:1">
-              <select id="candidateSortFilter" style="margin:0">
-                <option value="score_desc">Score High &rarr; Low</option>
-                <option value="score_asc">Score Low &rarr; High</option>
-                <option value="name_asc">Name A &rarr; Z</option>
-                <option value="submitted_desc">Submitted Recent &rarr; Old</option>
-              </select>
+            <div style="display:flex;gap:8px">
+              <button id="applyExamFiltersBtn" class="btn small" style="margin:0">Filter</button>
+              <button id="resetExamFiltersBtn" class="btn small ghost" style="margin:0">Reset</button>
             </div>
           </div>
         </div>
 
-        <table class="data">
-          <thead>
-            <tr>
-              <th>Candidate</th>
-              <th>College</th>
-              <th>Attempts</th>
-              <th>Status</th>
-              <th>Score</th>
-              <th>Percentage</th>
-              <th>Scholarship</th>
-              <th>Result</th>
-              <th>Completed At</th>
-            </tr>
-          </thead>
-          <tbody id="examCandidatesBody"></tbody>
-        </table>
-
-        <!-- Candidates Pagination -->
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:13px;color:var(--muted)">
-          <span id="candidatePaginationInfo">Showing 0 of 0 candidates</span>
-          <div style="display:flex;gap:8px">
-            <button id="candidatePrevBtn" class="btn small ghost" style="margin:0" disabled>Previous</button>
-            <span id="candidateCurrentPage" style="align-self:center;font-weight:600">Page 1</span>
-            <button id="candidateNextBtn" class="btn small ghost" style="margin:0" disabled>Next</button>
-          </div>
+        <!-- Exams Table -->
+        <div style="overflow-x:auto">
+          <table class="data" id="examsTable">
+            <thead>
+              <tr>
+                <th>Exam / Code</th>
+                <th>Status</th>
+                <th>Version</th>
+                <th>Sections</th>
+                <th>Duration</th>
+                <th>Marks</th>
+                <th>Passing</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="examsBody"></tbody>
+          </table>
         </div>
-      </div>
-    </div>
 
-    <!-- Questions Tab -->
-    <div class="tabpane card" id="pane-questions" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <h2 style="margin:0">Question Bank 2.0</h2>
-        <div style="display:flex;gap:8px">
-          <button id="addQBtn" class="btn small">+ Add Question</button>
-          <button id="importCsvBtn" class="btn small ghost">Import CSV</button>
-          <button id="exportCsvBtn" class="btn small ghost">Export CSV</button>
-        </div>
-      </div>
-
-      <!-- Filters & Search Bar -->
-      <div class="card" style="background:#F9FAFB;padding:14px;margin-bottom:16px;border:1px solid var(--line)">
-        <div class="row" style="margin-bottom:8px">
-          <div style="flex:2">
-            <label style="font-size:12px;margin-bottom:4px">Search (Title, Question, Topic, Skill, Tag)</label>
-            <input id="q_search" placeholder="Type keywords...">
-          </div>
-          <div style="flex:1">
-            <label style="font-size:12px;margin-bottom:4px">Status</label>
-            <select id="q_filter_status">
-              <option value="ALL">All Statuses</option>
-              <option value="PUBLISHED">Published</option>
-              <option value="REVIEW">Review</option>
-              <option value="DRAFT">Draft</option>
-              <option value="ARCHIVED">Archived</option>
-            </select>
-          </div>
-          <div style="flex:1">
-            <label style="font-size:12px;margin-bottom:4px">Difficulty</label>
-            <select id="q_filter_difficulty">
-              <option value="ALL">All Difficulties</option>
-              <option value="EASY">Easy</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="HARD">Hard</option>
-            </select>
-          </div>
-        </div>
-        <div class="row" style="align-items:flex-end">
-          <div style="flex:1">
-            <label style="font-size:12px;margin-bottom:4px">Type</label>
-            <select id="q_filter_type">
-              <option value="ALL">All Types</option>
-              <option value="mcq">MCQ</option>
-              <option value="code">Code (Judge0)</option>
-            </select>
-          </div>
-          <div style="flex:1">
-            <label style="font-size:12px;margin-bottom:4px">Category</label>
-            <select id="q_filter_category">
-              <option value="ALL">All Categories</option>
-              <option value="aptitude">Aptitude</option>
-              <option value="technical">Technical</option>
-              <option value="coding">Coding</option>
-            </select>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button id="qFilterApplyBtn" class="btn small" style="margin:0">Apply Filters</button>
-            <button id="qFilterResetBtn" class="btn small ghost" style="margin:0">Reset</button>
+        <!-- Pagination Controls for Exams -->
+        <div id="examPaginationBar" style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;font-size:0.85rem;color:var(--color-text-secondary)">
+          <span id="examPaginationInfo">Showing 0 of 0 exams</span>
+          <div style="display:flex;gap:10px">
+            <button id="examPrevPageBtn" class="btn small ghost" style="margin:0" disabled>Previous</button>
+            <span id="examCurrentPage" style="align-self:center;font-weight:600">Page 1</span>
+            <button id="examNextPageBtn" class="btn small ghost" style="margin:0" disabled>Next</button>
           </div>
         </div>
       </div>
 
-      <!-- Questions Data Table -->
-      <table class="data">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Title & Question</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Difficulty</th>
-            <th>Marks</th>
-            <th>Status</th>
-            <th>Version</th>
-            <th>Scope</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="qBody"></tbody>
-      </table>
-
-      <!-- Pagination Bar -->
-      <div class="pagination-bar" id="qPaginationBar" style="display:none">
-        <button id="qPrevPageBtn" class="btn small ghost">← Prev</button>
-        <span id="qPageInfo">Page 1 of 1</span>
-        <button id="qNextPageBtn" class="btn small ghost">Next →</button>
-      </div>
-
-      <!-- Question Form Modal / Drawer -->
-      <div id="qForm" class="card" style="display:none;margin-top:20px;background:#FDFDFB;border:1px solid var(--accent)">
-        <h2 id="qFormTitle">Add question</h2>
-        <div id="qDuplicateWarning" class="err" style="display:none;margin-bottom:12px;background:#FEF3C7;color:#92400E;border-color:#FCD34D"></div>
-        <div id="qFormBody"></div>
-        <div style="margin-top:16px;display:flex;gap:8px">
-          <button id="saveQBtn" class="btn">Save Question</button>
-          <button id="cancelQBtn" class="btn ghost">Cancel</button>
-        </div>
-        <div id="qFormErr" class="err" style="margin-top:12px"></div>
-      </div>
-    </div>
-
-    <!-- Question Preview Modal -->
-    <div id="previewModal" class="modal-overlay" style="display:none">
-      <div class="modal-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h3 style="margin:0" id="previewTitle">Question Preview</h3>
-          <button id="closePreviewBtn" class="btn small ghost" style="margin:0">✕</button>
-        </div>
-        <div id="previewBody"></div>
-      </div>
-    </div>
-
-    <!-- CSV Bulk Import Modal -->
-    <div id="csvImportModal" class="modal-overlay" style="display:none">
-      <div class="modal-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h3 style="margin:0">Bulk CSV Import</h3>
-          <button id="closeCsvModalBtn" class="btn small ghost" style="margin:0">✕</button>
-        </div>
-        <p class="sub" style="margin-bottom:8px">
-          Paste or upload question bank CSV data. Columns: <code>type,category,title,question_text,difficulty,topic,skill,marks,time_estimate,options,correct_index,status</code>
-        </p>
-        <div style="margin-bottom:12px">
-          <input type="file" id="csvFileInput" accept=".csv" style="margin-bottom:8px">
-          <textarea id="csvTextInput" rows="8" placeholder="type,category,title,question_text,difficulty,marks,options,correct_index,status&#10;mcq,aptitude,Sample Q,What is 2+2?,EASY,1,&quot;3;4;5;6&quot;,1,PUBLISHED" style="font-family:monospace;font-size:12px"></textarea>
-        </div>
-        <div id="csvPreviewOutput" style="display:none;margin-bottom:12px;padding:10px;background:#F9FAFB;border-radius:8px;font-size:13px"></div>
-        <div style="display:flex;gap:8px">
-          <button id="csvPreviewBtn" class="btn small">Preview CSV</button>
-          <button id="csvCommitBtn" class="btn small" style="display:none">Confirm Import</button>
-          <button id="csvCancelBtn" class="btn small ghost">Cancel</button>
-        </div>
-        <div id="csvErr" class="err" style="display:none;margin-top:10px"></div>
-      </div>
-    </div>
-
-    <!-- Config Tab -->
-    <div class="tabpane card" id="pane-config" style="display:none">
-      <h2>Test configuration</h2>
-      <div id="judge0Notice" class="okmsg" style="margin-bottom:12px"></div>
-      <label>Test title</label><input id="c_title">
-      <div class="row">
-        <div><label>Duration (minutes)</label><input id="c_duration" type="number" min="1"></div>
-      </div>
-      <label style="margin-top:8px">Questions per test — per-category quotas (random subset per category, interleaved)</label>
-      <div class="row">
-        <div><label>Aptitude</label><input id="c_q_apt" type="number" min="0"></div>
-        <div><label>Technical (MCQ)</label><input id="c_q_tech" type="number" min="0"></div>
-        <div><label>Coding (Judge0)</label><input id="c_q_code" type="number" min="0"></div>
-      </div>
-      <label><input id="c_shuffle_q" type="checkbox" style="width:auto"> Shuffle question order</label>
-      <label><input id="c_shuffle_o" type="checkbox" style="width:auto"> Shuffle MCQ options</label>
-      <label>Brand name</label><input id="c_brand">
-      <label>Accent color</label><input id="c_accent">
-      <div id="slabsSection">
-        <label>Scholarship slabs (JSON array of {"min","scholarship"}, highest first)</label>
-        <textarea id="c_slabs" rows="7" style="font-family:monospace"></textarea>
-      </div>
-      <button id="saveCfgBtn" class="btn">Save configuration</button>
-      <div id="cfgOk" class="okmsg"></div>
-    </div>
-
-    <!-- Results Tab -->
-    <div class="tabpane card" id="pane-results" style="display:none">
-      <h2>Results</h2>
-      <div class="row">
-        <div><label>College contains</label><input id="f_college"></div>
-        <div><label>Track</label><input id="f_track"></div>
-      </div>
-      <div class="row">
-        <div><label>Min % </label><input id="f_minp" type="number" min="0" max="100"></div>
-        <div><label>&nbsp;</label><div><button id="filterBtn" class="btn small">Apply filters</button>
-          <button id="csvBtn" class="btn small ghost" style="display:none">Download CSV</button></div></div>
-      </div>
-      <p class="sub" id="resCount"></p>
-      <table class="data">
-        <thead><tr><th>Name</th><th>Phone</th><th>College</th><th>Track</th><th>Score</th><th>%</th><th>Scholarship</th><th>Claim code</th><th>Proctoring Risk</th><th>Submitted</th><th>Actions</th></tr></thead>
-        <tbody id="resBody"></tbody>
-      </table>
-    </div>
-
-    <!-- Report Tab -->
-    <div class="tabpane card" id="pane-report" style="display:none">
-      <h2>Per-college batch report</h2>
-      <label>College name (partial match)</label>
-      <div class="row">
-        <div><input id="repCollege" placeholder="e.g. JNTU"></div>
-        <div><label>&nbsp;</label><button id="repBtn" class="btn small">Generate report</button></div>
-      </div>
-      <div id="repOut" style="margin-top:16px"></div>
-    </div>
-
-    <!-- User Management Tab -->
-    <div class="tabpane card" id="pane-users" style="display:none">
-      <h2>User Management</h2>
-      <button id="addUserBtn" class="btn small">+ Add User</button>
-      <div id="userForm" class="card" style="display:none;margin-top:20px;background:#FDFDFB">
-        <h3>Create Admin User</h3>
-        <label>Full Name</label><input id="u_name" placeholder="Full Name">
-        <label>Email</label><input id="u_email" type="email" placeholder="user@domain.com">
-        <label>Password (min 8 chars)</label><input id="u_password" type="password" placeholder="••••••••">
-        <label>Role</label>
-        <select id="u_role">
-          <option value="VIEWER">Viewer (Read-only results)</option>
-          <option value="EVALUATOR">Evaluator (Results & Analytics)</option>
-          <option value="EXAM_MANAGER">Exam Manager (Questions & Exams)</option>
-          <option value="ORG_ADMIN">Organization Admin</option>
-          <option value="SUPER_ADMIN" id="u_role_super" style="display:none">Super Admin (Platform Level)</option>
-        </select>
-        <button id="saveUserBtn" class="btn">Create User</button>
-        <button id="cancelUserBtn" class="btn ghost">Cancel</button>
-        <div id="userErr" class="err" style="display:none;margin-top:8px"></div>
-      </div>
-      <table class="data" style="margin-top:16px">
-        <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th><th>Actions</th></tr></thead>
-        <tbody id="usersBody"></tbody>
-      </table>
-    </div>
-
-    <!-- Organizations Tab (SUPER_ADMIN) -->
-    <div class="tabpane card" id="pane-organizations" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <div>
-          <h2 style="margin:0">Organizations Management</h2>
-          <span style="font-size:13px;color:var(--muted)">Manage multi-tenant institution accounts, view usage, invite administrators, or toggle status.</span>
-        </div>
-        <button id="createOrgBtn" class="btn small">+ Create Organization</button>
-      </div>
-
-      <!-- Filters & Search -->
-      <div class="row" style="margin-bottom:14px;align-items:center">
-        <div style="flex:2">
-          <input id="orgSearchInput" placeholder="Search by organization name, slug, or email..." style="width:100%">
-        </div>
-        <div style="flex:1">
-          <select id="orgStatusFilter">
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="SUSPENDED">Suspended / Disabled</option>
-          </select>
-        </div>
-        <div>
-          <button id="orgRefreshBtn" class="btn small ghost">Refresh</button>
-        </div>
-      </div>
-
-      <!-- Organizations Table -->
-      <table class="data" id="orgsTable">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Organization</th>
-            <th>Slug</th>
-            <th>Official Email</th>
-            <th>Status</th>
-            <th>Created</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="orgsBody"></tbody>
-      </table>
-
-      <!-- Pagination Controls for Organizations -->
-      <div id="orgPaginationBar" style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:13px;color:var(--muted)">
-        <span id="orgPaginationInfo">Showing 0 of 0 organizations</span>
-        <div style="display:flex;gap:8px">
-          <button id="orgPrevBtn" class="btn small ghost" disabled>&larr; Prev</button>
-          <button id="orgNextBtn" class="btn small ghost" disabled>Next &rarr;</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Branding & Organization Profile Tab (ORG_ADMIN) -->
-    <div class="tabpane card" id="pane-branding" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px">
-        <div>
-          <h2 style="margin:0">Organization Profile & Branding</h2>
-          <span style="font-size:13px;color:var(--muted)">Customize your institution identity, brand colors, certificate styling, and team members.</span>
-        </div>
-        <button id="saveOrgBrandingBtn" class="btn">Save Changes</button>
-      </div>
-
-      <div id="brandingMsg" class="okmsg" style="display:none;margin-bottom:12px"></div>
-      <div id="brandingErr" class="err" style="display:none;margin-bottom:12px"></div>
-
-      <!-- Usage Summary Cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:24px">
-        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
-          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Registered Candidates</div>
-          <div id="usageCandidates" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
-        </div>
-        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
-          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Active Exams</div>
-          <div id="usageExams" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
-        </div>
-        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
-          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Total Attempts</div>
-          <div id="usageAttempts" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
-        </div>
-        <div class="card" style="padding:16px;background:var(--cream);border:1px solid var(--line);border-radius:6px">
-          <div style="font-size:12px;color:var(--muted);text-transform:uppercase;font-weight:600">Certificates Issued</div>
-          <div id="usageCertificates" style="font-size:24px;font-weight:700;color:var(--navy);margin-top:4px">0</div>
-        </div>
-      </div>
-
-      <!-- Profile & Basic Info -->
-      <h3 style="margin-top:0;border-bottom:1px solid var(--line);padding-bottom:8px">1. Organization Details</h3>
-      <div class="row">
-        <div><label>Organization Name</label><input id="b_name" placeholder="Institution Name"></div>
-        <div><label>Official Email</label><input id="b_email" type="email" placeholder="contact@university.edu"></div>
-      </div>
-      <div class="row">
-        <div><label>Contact Phone</label><input id="b_phone" placeholder="+91 9876543210"></div>
-        <div><label>Website</label><input id="b_website" placeholder="https://university.edu"></div>
-      </div>
-      <div class="row">
-        <div>
-          <label>Timezone (for reports & test schedules)</label>
-          <select id="b_timezone">
-            <option value="Asia/Kolkata">Asia/Kolkata (IST +5:30)</option>
-            <option value="Asia/Dubai">Asia/Dubai (GST +4:00)</option>
-            <option value="Europe/London">Europe/London (GMT/BST)</option>
-            <option value="America/New_York">America/New_York (EST/EDT)</option>
-            <option value="UTC">UTC</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Brand Palette & Logo -->
-      <h3 style="margin-top:24px;border-bottom:1px solid var(--line);padding-bottom:8px">2. Brand Colors & Logo</h3>
-      <div class="row">
-        <div>
-          <label>Organization Logo (PNG/JPEG/WebP, max 2MB)</label>
-          <div style="display:flex;gap:12px;align-items:center">
-            <img id="b_logo_preview" src="" style="width:60px;height:60px;object-fit:contain;border:1px solid var(--line);border-radius:4px;display:none;background:#fff">
-            <input id="b_logo_file" type="file" accept="image/png,image/jpeg,image/webp">
-            <button id="uploadLogoBtn" class="btn small ghost">Upload Logo</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="row" style="margin-top:12px">
-        <div>
-          <label>Primary Brand Color</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="b_primary_color_picker" type="color" value="#0B1F3A" style="width:40px;height:38px;padding:2px;border:none">
-            <input id="b_primary_color" value="#0B1F3A" style="flex:1" placeholder="#0B1F3A">
-          </div>
-        </div>
-        <div>
-          <label>Secondary Color</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="b_secondary_color_picker" type="color" value="#13294B" style="width:40px;height:38px;padding:2px;border:none">
-            <input id="b_secondary_color" value="#13294B" style="flex:1" placeholder="#13294B">
-          </div>
-        </div>
-        <div>
-          <label>Accent Brand Color</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <input id="b_accent_color_picker" type="color" value="#F97316" style="width:40px;height:38px;padding:2px;border:none">
-            <input id="b_accent_color" value="#F97316" style="flex:1" placeholder="#F97316">
-          </div>
-        </div>
-      </div>
-
-      <!-- Certificate Branding -->
-      <h3 style="margin-top:24px;border-bottom:1px solid var(--line);padding-bottom:8px">3. Certificate Customization</h3>
-      <div class="row">
-        <div><label>Certificate Title</label><input id="b_cert_title" placeholder="Certificate of Achievement"></div>
-        <div><label>Certificate Organization Header</label><input id="b_cert_org_name" placeholder="Leave blank to use Organization Name"></div>
-      </div>
-      <div class="row">
-        <div><label>Authorized Signatory Name</label><input id="b_cert_signatory" placeholder="e.g. Dr. A. Sharma"></div>
-        <div><label>Signatory Title</label><input id="b_cert_signatory_title" placeholder="e.g. Dean of Examinations"></div>
-      </div>
-      <div class="row">
-        <div><label>Footer Accreditation / Subtext</label><input id="b_cert_footer" placeholder="Recognised by Board of Technical Education"></div>
-      </div>
-
-      <!-- Team Invitations Section -->
-      <h3 style="margin-top:28px;border-bottom:1px solid var(--line);padding-bottom:8px">4. Team & Administrator Invitations</h3>
-      <div class="row" style="align-items:center">
-        <div style="flex:2"><input id="b_invite_email" placeholder="colleague@institution.edu" type="email"></div>
-        <div style="flex:1">
-          <select id="b_invite_role">
-            <option value="ORG_ADMIN">Organization Admin</option>
-            <option value="EXAM_MANAGER">Exam Manager</option>
-            <option value="EVALUATOR">Evaluator</option>
-            <option value="VIEWER">Viewer</option>
-          </select>
-        </div>
-        <div><button id="sendInviteBtn" class="btn small">+ Send Invitation</button></div>
-      </div>
-      <div id="inviteMsg" class="okmsg" style="display:none;margin-top:8px"></div>
-      <div id="inviteErr" class="err" style="display:none;margin-top:8px"></div>
-
-      <table class="data" style="margin-top:16px">
-        <thead>
-          <tr>
-            <th>Invitee Email</th>
-            <th>Role</th>
-            <th>Expires</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="b_invitations_body"></tbody>
-      </table>
-    </div>
-
-    <!-- Create Organization Modal (SUPER_ADMIN) -->
-    <div id="createOrgModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;padding:24px">
-      <div class="card" style="max-width:600px;margin:30px auto;background:#fff;padding:24px;border-radius:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
-          <h2 style="margin:0">Create New Organization</h2>
-          <button id="closeCreateOrgModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
-        </div>
-        <div id="createOrgErr" class="err" style="display:none;margin-bottom:12px"></div>
-        <label>Organization Name *</label><input id="m_org_name" placeholder="e.g. Delhi Technical University">
-        <div class="row">
-          <div><label>Slug (URL key)</label><input id="m_org_slug" placeholder="e.g. dtu-delhi"></div>
-          <div><label>Official Email</label><input id="m_org_email" placeholder="contact@dtu.ac.in" type="email"></div>
-        </div>
-        <div class="row">
-          <div><label>Contact Phone</label><input id="m_org_phone" placeholder="+91 9811002233"></div>
-          <div><label>Website</label><input id="m_org_website" placeholder="https://dtu.ac.in"></div>
-        </div>
-        <div class="row">
+      <!-- =====================================================================
+           SCREEN 15: EXAM ANALYTICS (Day 19)
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-exam-analytics" style="display:none">
+        <!-- Header -->
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;border-bottom:1px solid var(--color-light-border);padding-bottom:16px">
           <div>
-            <label>Timezone</label>
-            <select id="m_org_timezone">
-              <option value="Asia/Kolkata">Asia/Kolkata</option>
-              <option value="Asia/Dubai">Asia/Dubai</option>
-              <option value="Europe/London">Europe/London</option>
-              <option value="America/New_York">America/New_York</option>
-              <option value="UTC">UTC</option>
+            <button id="backToExamsBtn" class="btn small ghost" style="margin-bottom:10px;padding:4px 10px">&larr; Back to Exams</button>
+            <div style="display:flex;align-items:center;gap:12px">
+              <h2 id="analyticsExamName" style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">Exam Analytics</h2>
+              <span id="analyticsExamStatus" class="status-badge status-live">PUBLISHED</span>
+            </div>
+            <div id="analyticsExamMeta" style="font-size:0.85rem;color:var(--color-text-secondary);margin-top:4px">Loading exam metadata...</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <select id="analyticsPeriodSelect" style="width:auto;margin:0;padding:6px 12px;font-size:0.825rem">
+              <option value="all" selected>All Time</option>
+              <option value="today">Today</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+              <option value="90d">Last 90 Days</option>
             </select>
-          </div>
-          <div>
-            <label>Initial Status</label>
-            <select id="m_org_status">
-              <option value="ACTIVE">Active</option>
-              <option value="SUSPENDED">Suspended</option>
-            </select>
+            <button id="analyticsRefreshBtn" class="btn small ghost" style="margin:0;padding:6px 14px">&#8635; Refresh</button>
           </div>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px">
-          <button id="cancelCreateOrgBtn" class="btn ghost">Cancel</button>
-          <button id="submitCreateOrgBtn" class="btn">Create Organization</button>
-        </div>
-      </div>
-    </div>
 
-    <!-- Organization Details & Usage Modal (SUPER_ADMIN) -->
-    <div id="orgDetailsModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;padding:24px">
-      <div class="card" style="max-width:680px;margin:30px auto;background:#fff;padding:24px;border-radius:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
-          <div>
-            <h2 id="od_title" style="margin:0">Organization Details</h2>
-            <span id="od_subtitle" style="font-size:13px;color:var(--muted)"></span>
-          </div>
-          <button id="closeOrgDetailsModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
-        </div>
-        <div id="od_usage_grid" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:20px"></div>
-        <div id="od_details_content" style="font-size:14px;color:var(--ink)"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;border-top:1px solid var(--line);padding-top:14px">
-          <button id="od_toggle_status_btn" class="btn small ghost"></button>
-          <button id="closeOrgDetailsBottomBtn" class="btn small">Close</button>
-        </div>
-      </div>
-    </div>
+        <div id="analyticsErrorBanner" class="err" style="display:none;margin-bottom:20px"></div>
 
-    <!-- Exam Builder Modal / Guided Workflow -->
-    <div id="examBuilderModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;padding:24px">
-      <div class="card" style="max-width:880px;margin:20px auto;background:#fff;padding:24px;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.2)">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
-          <div>
-            <h2 id="builderModalTitle" style="margin:0">Exam Builder</h2>
-            <span id="builderModalSubtitle" style="font-size:13px;color:var(--muted)">Configure exam parameters, sections, rules, and scoring</span>
-          </div>
-          <button id="closeBuilderModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+        <!-- Section Navigation Pills -->
+        <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--color-light-border);padding-bottom:12px;overflow-x:auto">
+          <button class="btn small analytics-nav-btn" data-sec="overview" style="background:var(--color-midnight);color:#fff">Overview & Funnel</button>
+          <button class="btn small ghost analytics-nav-btn" data-sec="questions">Questions & Discrimination</button>
+          <button class="btn small ghost analytics-nav-btn" data-sec="coding">Coding Execution</button>
+          <button class="btn small ghost analytics-nav-btn" data-sec="performance">Performance & Distribution</button>
+          <button class="btn small ghost analytics-nav-btn" data-sec="candidates">Candidate Roster</button>
         </div>
 
-        <!-- Step Navigation Bar -->
-        <div style="display:flex;gap:6px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:8px">
-          <button class="tab active" data-step="1" id="step-btn-1">1. Basic Info</button>
-          <button class="tab" data-step="2" id="step-btn-2">2. Sections & Rules</button>
-          <button class="tab" data-step="3" id="step-btn-3">3. Scholarship</button>
-          <button class="tab" data-step="4" id="step-btn-4">4. Review & Publish</button>
-        </div>
-
-        <div id="builderGlobalErr" class="err" style="display:none;margin-bottom:14px"></div>
-
-        <!-- Step 1: Basic Information -->
-        <div id="builderStep1" class="builder-step">
-          <div class="row">
-            <div style="flex:2">
-              <label>Exam Name *</label>
-              <input id="eb_name" placeholder="e.g. Aspire Scholarship Test 2026">
+        <!-- Tab Sub-Section 1: Overview & Funnel -->
+        <div id="analyticsSecOverview" class="analytics-sub-sec">
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-label">Registered Candidates</div>
+              <div class="kpi-value" id="kpiExamRegistered">—</div>
+              <div class="kpi-subtext">Total candidate signups</div>
             </div>
-            <div style="flex:1">
-              <label>Exam Code * (Unique)</label>
-              <input id="eb_code" placeholder="e.g. ASPIRE-2026" style="text-transform:uppercase">
+            <div class="kpi-card">
+              <div class="kpi-label">Started Candidates</div>
+              <div class="kpi-value" id="kpiExamStarted">—</div>
+              <div class="kpi-subtext" id="kpiExamStartRate">0% conversion</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Completed Attempts</div>
+              <div class="kpi-value" id="kpiExamCompleted">—</div>
+              <div class="kpi-subtext" id="kpiExamCompletionRate">0% completion</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Passed Candidates</div>
+              <div class="kpi-value" id="kpiExamPassed" style="color:var(--color-success)">—</div>
+              <div class="kpi-subtext" id="kpiExamPassRate">0% pass rate</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Failed Candidates</div>
+              <div class="kpi-value" id="kpiExamFailed" style="color:var(--color-danger)">—</div>
+              <div class="kpi-subtext" id="kpiExamFailRate">0% fail rate</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Abandoned / Expired</div>
+              <div class="kpi-value" id="kpiExamAbandoned" style="color:var(--color-warning, #D97706)">—</div>
+              <div class="kpi-subtext" id="kpiExamAbandonRate">0% drop-off</div>
             </div>
           </div>
-          <label>Description</label>
-          <textarea id="eb_desc" rows="2" placeholder="Brief description of the exam's purpose..."></textarea>
-          <div class="row" style="margin-top:10px">
-            <div style="flex:1">
-              <label>Duration (Minutes) *</label>
-              <input id="eb_duration" type="number" min="1" max="1440" value="90">
-            </div>
-            <div style="flex:1">
-              <label>Passing Score (%) *</label>
-              <input id="eb_passing" type="number" min="0" max="100" value="40">
-            </div>
-            <div style="flex:1">
-              <label>Max Attempts *</label>
-              <input id="eb_attempts" type="number" min="1" max="10" value="1">
-            </div>
+
+          <!-- Candidate Funnel Visual Display -->
+          <div class="card" style="background:#FFFFFF;padding:20px;border:1px solid var(--color-light-border);border-radius:12px;margin-bottom:24px">
+            <h3 style="margin-top:0;margin-bottom:16px;font-family:var(--font-display);font-size:1.15rem;color:var(--color-midnight)">Candidate Funnel Progression</h3>
+            <div id="funnelContainer" style="display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between"></div>
           </div>
-          <div class="row" style="margin-top:14px">
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-              <input type="checkbox" id="eb_shuffle_q" checked> Shuffle Question Order for Candidates
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-              <input type="checkbox" id="eb_shuffle_o" checked> Shuffle MCQ Option Order
-            </label>
-          </div>
-          <div style="display:flex;justify-content:flex-end;margin-top:20px;gap:8px">
-            <button id="step1SaveNextBtn" class="btn">Save & Continue to Sections &rarr;</button>
+
+          <!-- Quick Summary Metrics -->
+          <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit, minmax(180px, 1fr))">
+            <div class="kpi-card">
+              <div class="kpi-label">Average Score</div>
+              <div class="kpi-value" id="kpiExamAvgScore">—</div>
+              <div class="kpi-subtext">Mean percentage</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Median Score</div>
+              <div class="kpi-value" id="kpiExamMedianScore">—</div>
+              <div class="kpi-subtext">50th percentile (P50)</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Highest Score</div>
+              <div class="kpi-value" id="kpiExamHighestScore">—</div>
+              <div class="kpi-subtext">Maximum achieved</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Avg Duration</div>
+              <div class="kpi-value" id="kpiExamAvgDuration">—</div>
+              <div class="kpi-subtext">Minutes to complete</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Scholarships Awarded</div>
+              <div class="kpi-value" id="kpiExamScholarships">—</div>
+              <div class="kpi-subtext">Eligible recipients</div>
+            </div>
           </div>
         </div>
 
-        <!-- Step 2: Sections & Rules / Questions -->
-        <div id="builderStep2" class="builder-step" style="display:none">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <h3 style="margin:0">Exam Sections</h3>
-            <button id="addSectionPromptBtn" class="btn small">+ Add Section</button>
-          </div>
-
-          <!-- Add Section Inline Form -->
-          <div id="newSectionBox" class="card" style="display:none;background:#F9FAFB;padding:12px;margin-bottom:14px;border:1px solid var(--line)">
-            <h4 style="margin:0 0 8px 0">New Section</h4>
-            <div class="row">
-              <div style="flex:2">
-                <label>Section Name *</label>
-                <input id="sec_name" placeholder="e.g. Technical">
+        <!-- Tab Sub-Section 2: Questions & Discrimination -->
+        <div id="analyticsSecQuestions" class="analytics-sub-sec" style="display:none">
+          <div class="card" style="background:#FFFFFF;padding:16px;margin-bottom:20px;border:1px solid var(--color-light-border);border-radius:12px">
+            <div class="row" style="margin-bottom:10px;gap:10px;flex-wrap:wrap">
+              <div style="flex:2;min-width:200px">
+                <input id="qAnalyticsSearch" placeholder="Search questions by text or title..." style="margin:0;width:100%">
               </div>
-              <div style="flex:1">
-                <label>Selection Mode</label>
-                <select id="sec_mode">
-                  <option value="RULE_BASED">Rule-Based / Pool Random</option>
-                  <option value="MANUAL">Manual Question Selection</option>
+              <div style="flex:1;min-width:130px">
+                <select id="qAnalyticsTypeFilter" style="margin:0;width:100%">
+                  <option value="all">All Types</option>
+                  <option value="mcq">MCQ Only</option>
+                  <option value="code">Code Only</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:140px">
+                <select id="qAnalyticsDifficultyFilter" style="margin:0;width:100%">
+                  <option value="all">All Difficulties</option>
+                  <option value="VERY_EASY">Very Easy (&ge;85%)</option>
+                  <option value="EASY">Easy (70-84%)</option>
+                  <option value="MODERATE">Moderate (40-69%)</option>
+                  <option value="DIFFICULT">Difficult (20-39%)</option>
+                  <option value="VERY_DIFFICULT">Very Difficult (&lt;20%)</option>
+                </select>
+              </div>
+              <div style="flex:1;min-width:140px">
+                <select id="qAnalyticsSortFilter" style="margin:0;width:100%">
+                  <option value="order_asc">Default Order</option>
+                  <option value="accuracy_asc">Lowest Accuracy First</option>
+                  <option value="accuracy_desc">Highest Accuracy First</option>
+                  <option value="discrimination_desc">Strongest Discrimination (D)</option>
+                  <option value="marks_desc">Highest Marks First</option>
                 </select>
               </div>
             </div>
-            <label>Description</label>
-            <input id="sec_desc" placeholder="Section instructions or focus...">
-            <div style="margin-top:8px;display:flex;gap:8px">
-              <button id="saveSectionBtn" class="btn small">Create Section</button>
-              <button id="cancelSectionBtn" class="btn small ghost">Cancel</button>
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.775rem;color:var(--color-text-muted)">
+              <span id="qAnalyticsSampleBadge">Sample Size: 0 completed attempts</span>
+              <span>Method: Kelley's Upper/Lower 27% (N &ge; 10 required)</span>
             </div>
           </div>
 
-          <!-- Sortable Sections Container -->
-          <div id="sectionsListContainer" style="display:flex;flex-direction:column;gap:12px">
-            <!-- Sections rendered dynamically -->
-          </div>
-
-          <div style="display:flex;justify-content:space-between;margin-top:20px">
-            <button class="btn ghost back-step-btn" data-back="1">&larr; Back</button>
-            <button class="btn next-step-btn" data-next="3">Continue to Scholarship &rarr;</button>
+          <div style="overflow-x:auto">
+            <table class="data" id="examQuestionsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Type</th>
+                  <th>Question Title</th>
+                  <th>Marks</th>
+                  <th>Attempts</th>
+                  <th>Correct %</th>
+                  <th>Wrong %</th>
+                  <th>Unanswered</th>
+                  <th>Avg Time</th>
+                  <th>Difficulty</th>
+                  <th>Discrimination (D)</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="examQuestionsBody"></tbody>
+            </table>
           </div>
         </div>
 
-        <!-- Step 3: Scholarship Slabs -->
-        <div id="builderStep3" class="builder-step" style="display:none">
-          <h3>Scholarship Slabs</h3>
-          <p class="sub">Configure score thresholds and fee waivers. Slabs must not overlap.</p>
+        <!-- Tab Sub-Section 3: Coding Execution -->
+        <div id="analyticsSecCoding" class="analytics-sub-sec" style="display:none">
+          <div class="kpi-grid">
+            <div class="kpi-card">
+              <div class="kpi-label">Coding Submissions</div>
+              <div class="kpi-value" id="kpiCodingTotal">—</div>
+              <div class="kpi-subtext" id="kpiCodingUniqueStudents">0 unique candidates</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Accepted / Correct</div>
+              <div class="kpi-value" id="kpiCodingAccepted" style="color:var(--color-success)">—</div>
+              <div class="kpi-subtext">All test cases passed</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Compiler Errors</div>
+              <div class="kpi-value" id="kpiCodingCompileErrors" style="color:var(--color-danger)">—</div>
+              <div class="kpi-subtext">Syntax & compilation failures</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Runtime Failures</div>
+              <div class="kpi-value" id="kpiCodingRuntimeErrors" style="color:var(--color-warning, #D97706)">—</div>
+              <div class="kpi-subtext">Exceptions & non-zero exit</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Timeouts</div>
+              <div class="kpi-value" id="kpiCodingTimeouts" style="color:#B45309">—</div>
+              <div class="kpi-subtext">Time limit exceeded</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-label">Test Case Pass Rate</div>
+              <div class="kpi-value" id="kpiCodingTcPassRate">—</div>
+              <div class="kpi-subtext" id="kpiCodingTcRatio">0 / 0 evaluated</div>
+            </div>
+          </div>
+
+          <div style="margin-top:24px">
+            <h3 style="font-family:var(--font-display);font-size:1.15rem;margin-bottom:14px;color:var(--color-midnight)">Coding Questions Breakdown</h3>
+            <div style="overflow-x:auto">
+              <table class="data">
+                <thead>
+                  <tr>
+                    <th>Question</th>
+                    <th>Marks</th>
+                    <th>Submissions</th>
+                    <th>Submitters</th>
+                    <th>Accepted</th>
+                    <th>Compile Errors</th>
+                    <th>Runtime Errors</th>
+                    <th>Timeouts</th>
+                    <th>Pass Rate</th>
+                    <th>Avg Score</th>
+                  </tr>
+                </thead>
+                <tbody id="examCodingQuestionsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Sub-Section 4: Performance & Distribution -->
+        <div id="analyticsSecPerformance" class="analytics-sub-sec" style="display:none">
+          <div class="charts-grid">
+            <!-- Score Distribution -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Score Distribution</h3>
+                  <div class="chart-subtitle">Completed attempt percentages grouped into 20% bins</div>
+                </div>
+              </div>
+              <div class="chart-body" id="bodyExamScoreChart">
+                <canvas id="chartExamScoreDistribution"></canvas>
+              </div>
+            </div>
+
+            <!-- Duration Distribution -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Completion Duration</h3>
+                  <div class="chart-subtitle">Time elapsed from assessment start to submission</div>
+                </div>
+              </div>
+              <div class="chart-body" id="bodyExamDurationChart">
+                <canvas id="chartExamDurationDistribution"></canvas>
+              </div>
+            </div>
+
+            <!-- Pass / Fail Distribution -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Pass vs Fail Outcome</h3>
+                  <div class="chart-subtitle">Evaluated strictly using exam passing score threshold</div>
+                </div>
+              </div>
+              <div class="chart-body" id="bodyExamPassFailChart">
+                <canvas id="chartExamPassFail"></canvas>
+              </div>
+            </div>
+
+            <!-- Category Performance -->
+            <div class="chart-card">
+              <div class="chart-header">
+                <div>
+                  <h3 class="chart-title">Category Accuracy</h3>
+                  <div class="chart-subtitle">Performance breakdown across aptitude, technical & coding</div>
+                </div>
+              </div>
+              <div class="chart-body" id="bodyExamCategoryChart">
+                <canvas id="chartExamCategoryPerformance"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Statistical Measures Card -->
+          <div class="card" style="background:#FFFFFF;padding:20px;border:1px solid var(--color-light-border);border-radius:12px;margin-top:24px">
+            <h3 style="margin-top:0;margin-bottom:16px;font-family:var(--font-display);font-size:1.15rem;color:var(--color-midnight)">Descriptive Statistical Measures</h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:12px" id="examStatsGrid"></div>
+          </div>
+        </div>
+
+        <!-- Tab Sub-Section 5: Candidate Roster -->
+        <div id="analyticsSecCandidates" class="analytics-sub-sec" style="display:none">
+          <div class="card" style="background:#FFFFFF;padding:16px;margin-bottom:20px;border:1px solid var(--color-light-border);border-radius:12px">
+            <div class="row" style="margin-bottom:0;gap:12px;align-items:center">
+              <div style="flex:2">
+                <input id="candidateSearchInput" placeholder="Search candidate by name, email, or college..." style="margin:0;width:100%">
+              </div>
+              <div style="flex:1">
+                <select id="candidateStatusFilter" style="margin:0;width:100%">
+                  <option value="all">All Candidates</option>
+                  <option value="submitted">Completed Only</option>
+                  <option value="passed">Passed Only</option>
+                  <option value="failed">Failed Only</option>
+                  <option value="abandoned">Abandoned / Expired</option>
+                  <option value="in_progress">In-Progress</option>
+                </select>
+              </div>
+              <div style="flex:1">
+                <select id="candidateSortFilter" style="margin:0;width:100%">
+                  <option value="score_desc">Score High &rarr; Low</option>
+                  <option value="score_asc">Score Low &rarr; High</option>
+                  <option value="name_asc">Name A &rarr; Z</option>
+                  <option value="submitted_desc">Submitted Recent &rarr; Old</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div style="overflow-x:auto">
+            <table class="data">
+              <thead>
+                <tr>
+                  <th>Candidate</th>
+                  <th>College</th>
+                  <th>Attempts</th>
+                  <th>Status</th>
+                  <th>Score</th>
+                  <th>Percentage</th>
+                  <th>Scholarship</th>
+                  <th>Result</th>
+                  <th>Completed At</th>
+                </tr>
+              </thead>
+              <tbody id="examCandidatesBody"></tbody>
+            </table>
+          </div>
+
+          <!-- Candidates Pagination -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;font-size:0.85rem;color:var(--color-text-secondary)">
+            <span id="candidatePaginationInfo">Showing 0 of 0 candidates</span>
+            <div style="display:flex;gap:10px">
+              <button id="candidatePrevBtn" class="btn small ghost" style="margin:0" disabled>Previous</button>
+              <span id="candidateCurrentPage" style="align-self:center;font-weight:600">Page 1</span>
+              <button id="candidateNextBtn" class="btn small ghost" style="margin:0" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- =====================================================================
+           SCREEN 18: QUESTION BANK 2.0
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-questions" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--color-light-border)">
+          <div>
+            <h2 style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">Question Bank 2.0</h2>
+            <span style="font-size:0.85rem;color:var(--color-text-secondary);display:block;margin-top:4px">
+              Centralized repository of aptitude, technical MCQ, and coding challenges with psychometric calibration.
+            </span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button id="addQBtn" class="btn small">+ Add Question</button>
+            <button id="importCsvBtn" class="btn small ghost">Import CSV</button>
+            <button id="exportCsvBtn" class="btn small ghost">Export CSV</button>
+          </div>
+        </div>
+
+        <!-- Filters & Search Bar -->
+        <div class="card" style="background:#FFFFFF;padding:16px;margin-bottom:20px;border:1px solid var(--color-light-border);border-radius:12px">
+          <div class="row" style="margin-bottom:12px;gap:12px">
+            <div style="flex:2">
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:4px;color:var(--color-text-secondary);text-transform:uppercase">Search (Title, Question, Topic, Tag)</label>
+              <input id="q_search" placeholder="Type keywords..." style="margin:0;width:100%">
+            </div>
+            <div style="flex:1">
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:4px;color:var(--color-text-secondary);text-transform:uppercase">Status</label>
+              <select id="q_filter_status" style="margin:0;width:100%">
+                <option value="ALL">All Statuses</option>
+                <option value="PUBLISHED">Published</option>
+                <option value="REVIEW">Review</option>
+                <option value="DRAFT">Draft</option>
+                <option value="ARCHIVED">Archived</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:4px;color:var(--color-text-secondary);text-transform:uppercase">Difficulty</label>
+              <select id="q_filter_difficulty" style="margin:0;width:100%">
+                <option value="ALL">All Difficulties</option>
+                <option value="EASY">Easy</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HARD">Hard</option>
+              </select>
+            </div>
+          </div>
+          <div class="row" style="align-items:flex-end;margin-bottom:0;gap:12px">
+            <div style="flex:1">
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:4px;color:var(--color-text-secondary);text-transform:uppercase">Type</label>
+              <select id="q_filter_type" style="margin:0;width:100%">
+                <option value="ALL">All Types</option>
+                <option value="mcq">MCQ</option>
+                <option value="code">Code (Judge0)</option>
+              </select>
+            </div>
+            <div style="flex:1">
+              <label style="font-size:0.75rem;font-weight:600;margin-bottom:4px;color:var(--color-text-secondary);text-transform:uppercase">Category</label>
+              <select id="q_filter_category" style="margin:0;width:100%">
+                <option value="ALL">All Categories</option>
+                <option value="aptitude">Aptitude</option>
+                <option value="technical">Technical</option>
+                <option value="coding">Coding</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button id="qFilterApplyBtn" class="btn small" style="margin:0">Apply Filters</button>
+              <button id="qFilterResetBtn" class="btn small ghost" style="margin:0">Reset</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Questions Data Table -->
+        <div style="overflow-x:auto">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Title & Question</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Difficulty</th>
+                <th>Marks</th>
+                <th>Status</th>
+                <th>Version</th>
+                <th>Scope</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="qBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Bar -->
+        <div class="pagination-bar" id="qPaginationBar" style="display:none;margin-top:20px">
+          <button id="qPrevPageBtn" class="btn small ghost">&larr; Prev</button>
+          <span id="qPageInfo" style="font-weight:600;font-size:0.85rem">Page 1 of 1</span>
+          <button id="qNextPageBtn" class="btn small ghost">Next &rarr;</button>
+        </div>
+
+        <!-- Question Form Modal / Drawer -->
+        <div id="qForm" class="card" style="display:none;margin-top:24px;background:#FFFFFF;border:1px solid var(--color-gold);border-radius:12px;padding:24px">
+          <h2 id="qFormTitle" style="margin-top:0;font-family:var(--font-display);font-size:1.5rem">Add question</h2>
+          <div id="qDuplicateWarning" class="err" style="display:none;margin-bottom:14px;background:#FEF3C7;color:#92400E;border-color:#FCD34D"></div>
+          <div id="qFormBody"></div>
+          <div style="margin-top:20px;display:flex;gap:10px">
+            <button id="saveQBtn" class="btn">Save Question</button>
+            <button id="cancelQBtn" class="btn ghost">Cancel</button>
+          </div>
+          <div id="qFormErr" class="err" style="margin-top:14px"></div>
+        </div>
+      </div>
+
+      <!-- =====================================================================
+           GLOBAL TEST CONFIGURATION
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-config" style="display:none">
+        <h2 style="margin-top:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight);margin-bottom:8px">Test Configuration</h2>
+        <p class="sub" style="margin-bottom:20px">Global parameters for legacy standalone assessment generator.</p>
+        <div id="judge0Notice" class="okmsg" style="margin-bottom:16px"></div>
+        
+        <label for="c_title">Test title</label>
+        <input id="c_title" style="margin-bottom:16px">
+        
+        <div class="row" style="margin-bottom:16px">
+          <div><label for="c_duration">Duration (minutes)</label><input id="c_duration" type="number" min="1"></div>
+        </div>
+        
+        <label style="margin-top:10px">Questions per test — per-category quotas (random subset per category, interleaved)</label>
+        <div class="row" style="margin-bottom:16px">
+          <div><label for="c_q_apt">Aptitude</label><input id="c_q_apt" type="number" min="0"></div>
+          <div><label for="c_q_tech">Technical (MCQ)</label><input id="c_q_tech" type="number" min="0"></div>
+          <div><label for="c_q_code">Coding (Judge0)</label><input id="c_q_code" type="number" min="0"></div>
+        </div>
+        
+        <div style="display:flex;gap:24px;margin-bottom:16px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer"><input id="c_shuffle_q" type="checkbox" style="width:auto"> Shuffle question order</label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer"><input id="c_shuffle_o" type="checkbox" style="width:auto"> Shuffle MCQ options</label>
+        </div>
+
+        <div class="row" style="margin-bottom:16px">
+          <div><label for="c_brand">Brand name</label><input id="c_brand"></div>
+          <div><label for="c_accent">Accent color</label><input id="c_accent"></div>
+        </div>
+
+        <div id="slabsSection" style="margin-bottom:20px">
+          <label for="c_slabs">Scholarship slabs (JSON array of {"min","scholarship"}, highest first)</label>
+          <textarea id="c_slabs" rows="7" style="font-family:monospace;font-size:0.85rem"></textarea>
+        </div>
+        
+        <button id="saveCfgBtn" class="btn">Save configuration</button>
+        <div id="cfgOk" class="okmsg" style="margin-top:14px"></div>
+      </div>
+
+      <!-- =====================================================================
+           SCREEN 19 & 20: CANDIDATES, ATTEMPTS & SCHOLARSHIP RESULTS
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-results" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--color-light-border)">
+          <div>
+            <h2 style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">Candidate Results & Scholarships</h2>
+            <span style="font-size:0.85rem;color:var(--color-text-secondary);display:block;margin-top:4px">
+              Inspect candidate submissions, scholarship tiers, verified claim codes, and proctoring telemetry.
+            </span>
+          </div>
+          <button id="csvBtn" class="btn small ghost" style="display:none">&#128190; Download CSV</button>
+        </div>
+
+        <div class="card" style="background:#FFFFFF;padding:16px;margin-bottom:20px;border:1px solid var(--color-light-border);border-radius:12px">
+          <div class="row" style="margin-bottom:12px;gap:12px">
+            <div style="flex:1"><label for="f_college" style="font-size:0.75rem;text-transform:uppercase;color:var(--color-text-secondary);font-weight:600">College contains</label><input id="f_college" style="margin:0;width:100%"></div>
+            <div style="flex:1"><label for="f_track" style="font-size:0.75rem;text-transform:uppercase;color:var(--color-text-secondary);font-weight:600">Track</label><input id="f_track" style="margin:0;width:100%"></div>
+            <div style="flex:1"><label for="f_minp" style="font-size:0.75rem;text-transform:uppercase;color:var(--color-text-secondary);font-weight:600">Min %</label><input id="f_minp" type="number" min="0" max="100" style="margin:0;width:100%"></div>
+            <div style="align-self:flex-end">
+              <button id="filterBtn" class="btn small" style="margin:0">Apply filters</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="sub" id="resCount" style="margin-bottom:12px;font-weight:500"></p>
+        <div style="overflow-x:auto">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>College</th>
+                <th>Track</th>
+                <th>Score</th>
+                <th>%</th>
+                <th>Scholarship</th>
+                <th>Claim code</th>
+                <th>Proctoring Risk</th>
+                <th>Submitted</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="resBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- =====================================================================
+           INSTITUTIONAL BATCH REPORTS
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-report" style="display:none">
+        <h2 style="margin-top:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight);margin-bottom:8px">College Batch Report</h2>
+        <p class="sub" style="margin-bottom:20px">Aggregate institutional performance, pass rates, and scholarship allocations per college campus.</p>
+        
+        <div class="card" style="background:#FFFFFF;padding:16px;margin-bottom:20px;border:1px solid var(--color-light-border);border-radius:12px">
+          <label for="repCollege" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;color:var(--color-text-secondary)">College name (partial match)</label>
+          <div class="row" style="margin-bottom:0;gap:12px">
+            <div style="flex:3"><input id="repCollege" placeholder="e.g. JNTU, IIT, BITS" style="margin:0;width:100%"></div>
+            <div style="flex:1"><button id="repBtn" class="btn small" style="margin:0;width:100%">Generate report</button></div>
+          </div>
+        </div>
+        <div id="repOut" style="margin-top:20px"></div>
+      </div>
+
+      <!-- =====================================================================
+           SCREEN 23: USER & RBAC MANAGEMENT
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-users" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--color-light-border)">
+          <div>
+            <h2 style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">User Management & Roles</h2>
+            <span style="font-size:0.85rem;color:var(--color-text-secondary);display:block;margin-top:4px">
+              Manage platform administrators, evaluators, exam managers, and role-based permissions.
+            </span>
+          </div>
+          <button id="addUserBtn" class="btn small">+ Add User</button>
+        </div>
+
+        <div id="userForm" class="card" style="display:none;margin-bottom:24px;background:#FFFFFF;border:1px solid var(--color-gold);border-radius:12px;padding:24px">
+          <h3 style="margin-top:0;font-family:var(--font-display);font-size:1.25rem">Create Admin User</h3>
+          <div class="row" style="margin-bottom:12px">
+            <div style="flex:1"><label for="u_name">Full Name</label><input id="u_name" placeholder="Full Name"></div>
+            <div style="flex:1"><label for="u_email">Email</label><input id="u_email" type="email" placeholder="user@domain.com"></div>
+          </div>
+          <div class="row" style="margin-bottom:12px">
+            <div style="flex:1"><label for="u_password">Password (min 8 chars)</label><input id="u_password" type="password" placeholder="••••••••"></div>
+            <div style="flex:1">
+              <label for="u_role">Role</label>
+              <select id="u_role">
+                <option value="VIEWER">Viewer (Read-only results)</option>
+                <option value="EVALUATOR">Evaluator (Results & Analytics)</option>
+                <option value="EXAM_MANAGER">Exam Manager (Questions & Exams)</option>
+                <option value="ORG_ADMIN">Organization Admin</option>
+                <option value="SUPER_ADMIN" id="u_role_super" style="display:none">Super Admin (Platform Level)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <button id="saveUserBtn" class="btn">Create User</button>
+            <button id="cancelUserBtn" class="btn ghost">Cancel</button>
+          </div>
+          <div id="userErr" class="err" style="display:none;margin-top:12px"></div>
+        </div>
+
+        <div style="overflow-x:auto">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last Login</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="usersBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- =====================================================================
+           SCREEN 21: ORGANIZATIONS MANAGEMENT (SUPER_ADMIN)
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-organizations" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--color-light-border)">
+          <div>
+            <h2 style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">Organizations Management</h2>
+            <span style="font-size:0.85rem;color:var(--color-text-secondary);display:block;margin-top:4px">
+              Manage multi-tenant institution accounts, view usage telemetry, invite administrators, or toggle tenant status.
+            </span>
+          </div>
+          <button id="createOrgBtn" class="btn small">+ Create Organization</button>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="card" style="background:#FFFFFF;padding:16px;margin-bottom:20px;border:1px solid var(--color-light-border);border-radius:12px">
+          <div class="row" style="margin-bottom:0;align-items:center;gap:12px">
+            <div style="flex:2">
+              <input id="orgSearchInput" placeholder="Search by organization name, slug, or email..." style="width:100%;margin:0">
+            </div>
+            <div style="flex:1">
+              <select id="orgStatusFilter" style="margin:0;width:100%">
+                <option value="ALL">All Statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="SUSPENDED">Suspended / Disabled</option>
+              </select>
+            </div>
+            <div>
+              <button id="orgRefreshBtn" class="btn small ghost" style="margin:0">&#8635; Refresh</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Organizations Table -->
+        <div style="overflow-x:auto">
+          <table class="data" id="orgsTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Organization</th>
+                <th>Slug</th>
+                <th>Official Email</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="orgsBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Controls for Organizations -->
+        <div id="orgPaginationBar" style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;font-size:0.85rem;color:var(--color-text-secondary)">
+          <span id="orgPaginationInfo">Showing 0 of 0 organizations</span>
+          <div style="display:flex;gap:10px">
+            <button id="orgPrevBtn" class="btn small ghost" disabled>&larr; Prev</button>
+            <button id="orgNextBtn" class="btn small ghost" disabled>Next &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- =====================================================================
+           SCREEN 22: BRANDING & PROFILE (ORG_ADMIN)
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-branding" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--color-light-border)">
+          <div>
+            <h2 style="margin:0;font-family:var(--font-display);font-size:1.75rem;color:var(--color-midnight)">Organization Profile & Branding</h2>
+            <span style="font-size:0.85rem;color:var(--color-text-secondary);display:block;margin-top:4px">
+              Customize your institution identity, brand colors, certificate styling, and team members.
+            </span>
+          </div>
+          <button id="saveOrgBrandingBtn" class="btn">Save Changes</button>
+        </div>
+
+        <div id="brandingMsg" class="okmsg" style="display:none;margin-bottom:16px"></div>
+        <div id="brandingErr" class="err" style="display:none;margin-bottom:16px"></div>
+
+        <!-- Usage Summary Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:16px;margin-bottom:28px">
+          <div class="kpi-card" style="padding:18px">
+            <div class="kpi-label">Registered Candidates</div>
+            <div id="usageCandidates" class="kpi-value" style="font-size:1.75rem;margin-bottom:0">0</div>
+          </div>
+          <div class="kpi-card" style="padding:18px">
+            <div class="kpi-label">Active Exams</div>
+            <div id="usageExams" class="kpi-value" style="font-size:1.75rem;margin-bottom:0">0</div>
+          </div>
+          <div class="kpi-card" style="padding:18px">
+            <div class="kpi-label">Total Attempts</div>
+            <div id="usageAttempts" class="kpi-value" style="font-size:1.75rem;margin-bottom:0">0</div>
+          </div>
+          <div class="kpi-card" style="padding:18px">
+            <div class="kpi-label">Certificates Issued</div>
+            <div id="usageCertificates" class="kpi-value" style="font-size:1.75rem;margin-bottom:0">0</div>
+          </div>
+        </div>
+
+        <!-- Profile & Basic Info -->
+        <h3 style="margin-top:0;font-family:var(--font-display);border-bottom:1px solid var(--color-light-border);padding-bottom:10px;margin-bottom:16px">1. Organization Details</h3>
+        <div class="row" style="margin-bottom:14px">
+          <div><label for="b_name">Organization Name</label><input id="b_name" placeholder="Institution Name"></div>
+          <div><label for="b_email">Official Email</label><input id="b_email" type="email" placeholder="contact@university.edu"></div>
+        </div>
+        <div class="row" style="margin-bottom:14px">
+          <div><label for="b_phone">Contact Phone</label><input id="b_phone" placeholder="+91 9876543210"></div>
+          <div><label for="b_website">Website</label><input id="b_website" placeholder="https://university.edu"></div>
+        </div>
+        <div class="row" style="margin-bottom:24px">
+          <div>
+            <label for="b_timezone">Timezone (for reports & test schedules)</label>
+            <select id="b_timezone">
+              <option value="Asia/Kolkata">Asia/Kolkata (IST +5:30)</option>
+              <option value="Asia/Dubai">Asia/Dubai (GST +4:00)</option>
+              <option value="Europe/London">Europe/London (GMT/BST)</option>
+              <option value="America/New_York">America/New_York (EST/EDT)</option>
+              <option value="UTC">UTC</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Brand Palette & Logo -->
+        <h3 style="margin-top:24px;font-family:var(--font-display);border-bottom:1px solid var(--color-light-border);padding-bottom:10px;margin-bottom:16px">2. Brand Colors & Logo</h3>
+        <div class="row" style="margin-bottom:16px">
+          <div>
+            <label>Organization Logo (PNG/JPEG/WebP, max 2MB)</label>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+              <img id="b_logo_preview" src="" style="width:60px;height:60px;object-fit:contain;border:1px solid var(--color-light-border);border-radius:6px;display:none;background:#fff">
+              <input id="b_logo_file" type="file" accept="image/png,image/jpeg,image/webp">
+              <button id="uploadLogoBtn" class="btn small ghost">Upload Logo</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" style="margin-bottom:24px;gap:16px">
+          <div>
+            <label for="b_primary_color">Primary Brand Color</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="b_primary_color_picker" type="color" value="#0B1F3A" style="width:40px;height:38px;padding:2px;border:none;cursor:pointer">
+              <input id="b_primary_color" value="#0B1F3A" style="flex:1" placeholder="#0B1F3A">
+            </div>
+          </div>
+          <div>
+            <label for="b_secondary_color">Secondary Color</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="b_secondary_color_picker" type="color" value="#13294B" style="width:40px;height:38px;padding:2px;border:none;cursor:pointer">
+              <input id="b_secondary_color" value="#13294B" style="flex:1" placeholder="#13294B">
+            </div>
+          </div>
+          <div>
+            <label for="b_accent_color">Accent Brand Color</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="b_accent_color_picker" type="color" value="#F97316" style="width:40px;height:38px;padding:2px;border:none;cursor:pointer">
+              <input id="b_accent_color" value="#F97316" style="flex:1" placeholder="#F97316">
+            </div>
+          </div>
+        </div>
+
+        <!-- Certificate Branding -->
+        <h3 style="margin-top:24px;font-family:var(--font-display);border-bottom:1px solid var(--color-light-border);padding-bottom:10px;margin-bottom:16px">3. Certificate Customization</h3>
+        <div class="row" style="margin-bottom:14px">
+          <div><label for="b_cert_title">Certificate Title</label><input id="b_cert_title" placeholder="Certificate of Achievement"></div>
+          <div><label for="b_cert_org_name">Certificate Organization Header</label><input id="b_cert_org_name" placeholder="Leave blank to use Organization Name"></div>
+        </div>
+        <div class="row" style="margin-bottom:14px">
+          <div><label for="b_cert_signatory">Authorized Signatory Name</label><input id="b_cert_signatory" placeholder="e.g. Dr. A. Sharma"></div>
+          <div><label for="b_cert_signatory_title">Signatory Title</label><input id="b_cert_signatory_title" placeholder="e.g. Dean of Examinations"></div>
+        </div>
+        <div class="row" style="margin-bottom:28px">
+          <div><label for="b_cert_footer">Footer Accreditation / Subtext</label><input id="b_cert_footer" placeholder="Recognised by Board of Technical Education"></div>
+        </div>
+
+        <!-- Team Invitations Section -->
+        <h3 style="margin-top:28px;font-family:var(--font-display);border-bottom:1px solid var(--color-light-border);padding-bottom:10px;margin-bottom:16px">4. Team & Administrator Invitations</h3>
+        <div class="row" style="align-items:center;gap:12px;margin-bottom:10px">
+          <div style="flex:2"><input id="b_invite_email" placeholder="colleague@institution.edu" type="email" style="margin:0;width:100%"></div>
+          <div style="flex:1">
+            <select id="b_invite_role" style="margin:0;width:100%">
+              <option value="ORG_ADMIN">Organization Admin</option>
+              <option value="EXAM_MANAGER">Exam Manager</option>
+              <option value="EVALUATOR">Evaluator</option>
+              <option value="VIEWER">Viewer</option>
+            </select>
+          </div>
+          <div><button id="sendInviteBtn" class="btn small" style="margin:0">+ Send Invitation</button></div>
+        </div>
+        <div id="inviteMsg" class="okmsg" style="display:none;margin-top:8px"></div>
+        <div id="inviteErr" class="err" style="display:none;margin-top:8px"></div>
+
+        <div style="overflow-x:auto;margin-top:16px">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Invitee Email</th>
+                <th>Role</th>
+                <th>Expires</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="b_invitations_body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- =========================================================================
+       MODALS & DIALOGS (Preserving exact IDs and inner controls)
+       ========================================================================= -->
+
+  <!-- Create Organization Modal (SUPER_ADMIN) -->
+  <div id="createOrgModal" class="modal-backdrop" style="display:none">
+    <div class="card" style="max-width:600px;margin:30px auto;background:#fff;padding:24px;border-radius:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--color-light-border);padding-bottom:12px;margin-bottom:16px">
+        <h2 style="margin:0;font-family:var(--font-display);font-size:1.5rem">Create New Organization</h2>
+        <button id="closeCreateOrgModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <div id="createOrgErr" class="err" style="display:none;margin-bottom:14px"></div>
+      <label for="m_org_name">Organization Name *</label><input id="m_org_name" placeholder="e.g. Delhi Technical University">
+      <div class="row">
+        <div><label for="m_org_slug">Slug (URL key)</label><input id="m_org_slug" placeholder="e.g. dtu-delhi"></div>
+        <div><label for="m_org_email">Official Email</label><input id="m_org_email" placeholder="contact@dtu.ac.in" type="email"></div>
+      </div>
+      <div class="row">
+        <div><label for="m_org_phone">Contact Phone</label><input id="m_org_phone" placeholder="+91 9811002233"></div>
+        <div><label for="m_org_website">Website</label><input id="m_org_website" placeholder="https://dtu.ac.in"></div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="m_org_timezone">Timezone</label>
+          <select id="m_org_timezone">
+            <option value="Asia/Kolkata">Asia/Kolkata</option>
+            <option value="Asia/Dubai">Asia/Dubai</option>
+            <option value="Europe/London">Europe/London</option>
+            <option value="America/New_York">America/New_York</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+        <div>
+          <label for="m_org_status">Initial Status</label>
+          <select id="m_org_status">
+            <option value="ACTIVE">Active</option>
+            <option value="SUSPENDED">Suspended</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px">
+        <button id="cancelCreateOrgBtn" class="btn ghost">Cancel</button>
+        <button id="submitCreateOrgBtn" class="btn">Create Organization</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Organization Details & Usage Modal (SUPER_ADMIN) -->
+  <div id="orgDetailsModal" class="modal-backdrop" style="display:none">
+    <div class="card" style="max-width:680px;margin:30px auto;background:#fff;padding:24px;border-radius:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--color-light-border);padding-bottom:12px;margin-bottom:16px">
+        <div>
+          <h2 id="od_title" style="margin:0;font-family:var(--font-display);font-size:1.5rem">Organization Details</h2>
+          <span id="od_subtitle" style="font-size:0.85rem;color:var(--color-text-secondary)"></span>
+        </div>
+        <button id="closeOrgDetailsModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <div id="od_usage_grid" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin-bottom:20px"></div>
+      <div id="od_details_content" style="font-size:0.875rem;color:var(--color-text-primary)"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;border-top:1px solid var(--color-light-border);padding-top:14px">
+        <button id="od_toggle_status_btn" class="btn small ghost"></button>
+        <button id="closeOrgDetailsBottomBtn" class="btn small">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       SCREEN 17: EXAM BUILDER 2.0 (4-Step Guided Wizard)
+       ========================================================================= -->
+  <div id="examBuilderModal" class="modal-backdrop" style="display:none">
+    <div class="card" style="max-width:880px;margin:20px auto;background:#fff;padding:24px;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,0.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--color-light-border);padding-bottom:14px;margin-bottom:18px">
+        <div>
+          <h2 id="builderModalTitle" style="margin:0;font-family:var(--font-display);font-size:1.6rem;color:var(--color-midnight)">Exam Builder</h2>
+          <span id="builderModalSubtitle" style="font-size:0.85rem;color:var(--color-text-secondary)">Configure exam parameters, sections, rules, and scoring</span>
+        </div>
+        <button id="closeBuilderModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+
+      <!-- Step Navigation Bar -->
+      <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--color-light-border);padding-bottom:10px">
+        <button class="tab active" data-step="1" id="step-btn-1">1. Basic Info</button>
+        <button class="tab" data-step="2" id="step-btn-2">2. Sections & Rules</button>
+        <button class="tab" data-step="3" id="step-btn-3">3. Scholarship</button>
+        <button class="tab" data-step="4" id="step-btn-4">4. Review & Publish</button>
+      </div>
+
+      <div id="builderGlobalErr" class="err" style="display:none;margin-bottom:16px"></div>
+
+      <!-- Step 1: Basic Information -->
+      <div id="builderStep1" class="builder-step">
+        <div class="row">
+          <div style="flex:2">
+            <label for="eb_name">Exam Name *</label>
+            <input id="eb_name" placeholder="e.g. Aspire Scholarship Test 2026">
+          </div>
+          <div style="flex:1">
+            <label for="eb_code">Exam Code * (Unique)</label>
+            <input id="eb_code" placeholder="e.g. ASPIRE-2026" style="text-transform:uppercase">
+          </div>
+        </div>
+        <label for="eb_desc">Description</label>
+        <textarea id="eb_desc" rows="2" placeholder="Brief description of the exam's purpose..."></textarea>
+        <div class="row" style="margin-top:12px">
+          <div style="flex:1">
+            <label for="eb_duration">Duration (Minutes) *</label>
+            <input id="eb_duration" type="number" min="1" max="1440" value="90">
+          </div>
+          <div style="flex:1">
+            <label for="eb_passing">Passing Score (%) *</label>
+            <input id="eb_passing" type="number" min="0" max="100" value="40">
+          </div>
+          <div style="flex:1">
+            <label for="eb_attempts">Max Attempts *</label>
+            <input id="eb_attempts" type="number" min="1" max="10" value="1">
+          </div>
+        </div>
+        <div class="row" style="margin-top:14px;gap:24px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer">
+            <input type="checkbox" id="eb_shuffle_q" checked> Shuffle Question Order for Candidates
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;cursor:pointer">
+            <input type="checkbox" id="eb_shuffle_o" checked> Shuffle MCQ Option Order
+          </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:24px;gap:10px">
+          <button id="step1SaveNextBtn" class="btn">Save & Continue to Sections &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Sections & Rules / Questions -->
+      <div id="builderStep2" class="builder-step" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="margin:0;font-family:var(--font-display);font-size:1.25rem">Exam Sections</h3>
+          <button id="addSectionPromptBtn" class="btn small">+ Add Section</button>
+        </div>
+
+        <!-- Add Section Inline Form -->
+        <div id="newSectionBox" class="card" style="display:none;background:#FFFFFF;padding:16px;margin-bottom:16px;border:1px solid var(--color-light-border);border-radius:10px">
+          <h4 style="margin:0 0 10px 0;font-family:var(--font-display)">New Section</h4>
+          <div class="row">
+            <div style="flex:2">
+              <label for="sec_name">Section Name *</label>
+              <input id="sec_name" placeholder="e.g. Technical">
+            </div>
+            <div style="flex:1">
+              <label for="sec_mode">Selection Mode</label>
+              <select id="sec_mode">
+                <option value="RULE_BASED">Rule-Based / Pool Random</option>
+                <option value="MANUAL">Manual Question Selection</option>
+              </select>
+            </div>
+          </div>
+          <label for="sec_desc">Description</label>
+          <input id="sec_desc" placeholder="Section instructions or focus...">
+          <div style="margin-top:10px;display:flex;gap:8px">
+            <button id="saveSectionBtn" class="btn small">Create Section</button>
+            <button id="cancelSectionBtn" class="btn small ghost">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Sortable Sections Container -->
+        <div id="sectionsListContainer" style="display:flex;flex-direction:column;gap:14px"></div>
+
+        <div style="display:flex;justify-content:space-between;margin-top:24px">
+          <button class="btn ghost back-step-btn" data-back="1">&larr; Back</button>
+          <button class="btn next-step-btn" data-next="3">Continue to Scholarship &rarr;</button>
+        </div>
+      </div>
+
+      <!-- Step 3: Scholarship Slabs -->
+      <div id="builderStep3" class="builder-step" style="display:none">
+        <h3 style="font-family:var(--font-display);font-size:1.25rem;margin-bottom:6px">Scholarship Slabs</h3>
+        <p class="sub" style="margin-bottom:16px">Configure score thresholds and fee waivers. Slabs must not overlap.</p>
+        <div style="overflow-x:auto">
           <table class="data" id="slabsConfigTable">
             <thead>
               <tr>
@@ -1248,80 +1422,130 @@
             </thead>
             <tbody id="slabsConfigBody"></tbody>
           </table>
-          <button id="addSlabRowBtn" class="btn small ghost" style="margin-top:8px">+ Add Slab Row</button>
-
-          <div style="display:flex;justify-content:space-between;margin-top:20px">
-            <button class="btn ghost back-step-btn" data-back="2">&larr; Back</button>
-            <button id="saveSlabsAndContinueBtn" class="btn">Save Slabs & Continue &rarr;</button>
-          </div>
         </div>
+        <button id="addSlabRowBtn" class="btn small ghost" style="margin-top:12px">+ Add Slab Row</button>
 
-        <!-- Step 4: Review & Publish Validation -->
-        <div id="builderStep4" class="builder-step" style="display:none">
-          <h3>Exam Review & Publish Readiness</h3>
-          <div id="publishValidationResults" style="margin-bottom:16px"></div>
-          <div id="examReviewSummaryCard" class="card" style="background:#F9FAFB;padding:16px;border:1px solid var(--line)">
-            <!-- Summary rendered dynamically -->
-          </div>
+        <div style="display:flex;justify-content:space-between;margin-top:24px">
+          <button class="btn ghost back-step-btn" data-back="2">&larr; Back</button>
+          <button id="saveSlabsAndContinueBtn" class="btn">Save Slabs & Continue &rarr;</button>
+        </div>
+      </div>
 
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px">
-            <button class="btn ghost back-step-btn" data-back="3">&larr; Back</button>
-            <div style="display:flex;gap:8px">
-              <button id="builderPreviewExamBtn" class="btn ghost">Preview Exam</button>
-              <button id="builderPublishBtn" class="btn" style="background:var(--success, #059669)">Publish Exam</button>
-            </div>
+      <!-- Step 4: Review & Publish Validation -->
+      <div id="builderStep4" class="builder-step" style="display:none">
+        <h3 style="font-family:var(--font-display);font-size:1.25rem;margin-bottom:6px">Exam Review & Publish Readiness</h3>
+        <div id="publishValidationResults" style="margin-bottom:16px"></div>
+        <div id="examReviewSummaryCard" class="card" style="background:#FFFFFF;padding:18px;border:1px solid var(--color-light-border);border-radius:10px"></div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px">
+          <button class="btn ghost back-step-btn" data-back="3">&larr; Back</button>
+          <div style="display:flex;gap:10px">
+            <button id="builderPreviewExamBtn" class="btn ghost">Preview Exam</button>
+            <button id="builderPublishBtn" class="btn" style="background:var(--color-success);color:#fff">Publish Exam</button>
           </div>
         </div>
       </div>
     </div>
-
-    <!-- Exam Preview Modal -->
-    <div id="examPreviewModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1100;overflow-y:auto;padding:24px">
-      <div class="card" style="max-width:800px;margin:20px auto;background:#fff;padding:24px;border-radius:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px">
-          <div>
-            <h2 id="previewModalTitle" style="margin:0">Exam Preview</h2>
-            <span id="previewModalMeta" style="font-size:13px;color:var(--muted)"></span>
-          </div>
-          <button id="closeExamPreviewBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
-        </div>
-        <div id="examPreviewContent" style="max-height:600px;overflow-y:auto"></div>
-      </div>
-    </div>
-
-    <!-- Proctoring Analytics & Timeline Modal (Day 11) -->
-    <div id="proctoringModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1200;overflow-y:auto;padding:24px">
-      <div class="card" style="max-width:850px;margin:24px auto;background:#FFFFFF;border-radius:8px;padding:24px;box-shadow:0 10px 25px rgba(0,0,0,0.2)">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #E2E8F0;padding-bottom:12px;margin-bottom:16px">
-          <div>
-            <h2 id="procModalTitle" style="margin:0">Proctoring Behavioral Analytics</h2>
-            <span id="procModalMeta" style="font-size:13px;color:var(--muted)"></span>
-          </div>
-          <button id="closeProcModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
-        </div>
-        <div id="procModalBody"></div>
-      </div>
-    </div>
-
-    <!-- Question Analytics Detail Modal (Day 19) -->
-    <div id="questionAnalyticsModal" class="modal-backdrop" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1250;overflow-y:auto;padding:24px">
-      <div class="card" style="max-width:750px;margin:24px auto;background:#FFFFFF;border-radius:8px;padding:24px;box-shadow:0 10px 25px rgba(0,0,0,0.2)">
-        <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #E2E8F0;padding-bottom:12px;margin-bottom:16px">
-          <div>
-            <h2 id="qModalTitle" style="margin:0">Question Psychometric Analysis</h2>
-            <span id="qModalMeta" style="font-size:13px;color:var(--muted)"></span>
-          </div>
-          <button id="closeQModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
-        </div>
-        <div id="qModalBody"></div>
-      </div>
-    </div>
-
   </div>
+
+  <!-- Exam Preview Modal -->
+  <div id="examPreviewModal" class="modal-backdrop" style="display:none">
+    <div class="card" style="max-width:800px;margin:20px auto;background:#fff;padding:24px;border-radius:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--color-light-border);padding-bottom:12px;margin-bottom:16px">
+        <div>
+          <h2 id="previewModalTitle" style="margin:0;font-family:var(--font-display);font-size:1.5rem">Exam Preview</h2>
+          <span id="previewModalMeta" style="font-size:0.85rem;color:var(--color-text-secondary)"></span>
+        </div>
+        <button id="closeExamPreviewBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <div id="examPreviewContent" style="max-height:600px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- Question Preview Modal -->
+  <div id="previewModal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--color-light-border);padding-bottom:10px">
+        <h3 style="margin:0;font-family:var(--font-display);font-size:1.35rem" id="previewTitle">Question Preview</h3>
+        <button id="closePreviewBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <div id="previewBody"></div>
+    </div>
+  </div>
+
+  <!-- CSV Bulk Import Modal -->
+  <div id="csvImportModal" class="modal-overlay" style="display:none">
+    <div class="modal-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;border-bottom:1px solid var(--color-light-border);padding-bottom:10px">
+        <h3 style="margin:0;font-family:var(--font-display);font-size:1.35rem">Bulk CSV Import</h3>
+        <button id="closeCsvModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <p class="sub" style="margin-bottom:12px">
+        Paste or upload question bank CSV data. Columns: <code>type,category,title,question_text,difficulty,topic,skill,marks,time_estimate,options,correct_index,status</code>
+      </p>
+      <div style="margin-bottom:14px">
+        <input type="file" id="csvFileInput" accept=".csv" style="margin-bottom:10px">
+        <textarea id="csvTextInput" rows="8" placeholder="type,category,title,question_text,difficulty,marks,options,correct_index,status&#10;mcq,aptitude,Sample Q,What is 2+2?,EASY,1,&quot;3;4;5;6&quot;,1,PUBLISHED" style="font-family:monospace;font-size:0.8rem"></textarea>
+      </div>
+      <div id="csvPreviewOutput" style="display:none;margin-bottom:14px;padding:12px;background:#F9FAFB;border-radius:8px;font-size:0.85rem"></div>
+      <div style="display:flex;gap:10px">
+        <button id="csvPreviewBtn" class="btn small">Preview CSV</button>
+        <button id="csvCommitBtn" class="btn small" style="display:none">Confirm Import</button>
+        <button id="csvCancelBtn" class="btn small ghost">Cancel</button>
+      </div>
+      <div id="csvErr" class="err" style="display:none;margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Proctoring Analytics & Timeline Modal (Day 11) -->
+  <div id="proctoringModal" class="modal-backdrop" style="display:none">
+    <div class="card" style="max-width:850px;margin:24px auto;background:#FFFFFF;border-radius:14px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,0.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--color-light-border);padding-bottom:14px;margin-bottom:18px">
+        <div>
+          <h2 id="procModalTitle" style="margin:0;font-family:var(--font-display);font-size:1.5rem">Proctoring Behavioral Analytics</h2>
+          <span id="procModalMeta" style="font-size:0.85rem;color:var(--color-text-secondary)"></span>
+        </div>
+        <button id="closeProcModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <div id="procModalBody"></div>
+    </div>
+  </div>
+
+  <!-- Question Analytics Detail Modal (Day 19) -->
+  <div id="questionAnalyticsModal" class="modal-backdrop" style="display:none">
+    <div class="card" style="max-width:750px;margin:24px auto;background:#FFFFFF;border-radius:14px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,0.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--color-light-border);padding-bottom:14px;margin-bottom:18px">
+        <div>
+          <h2 id="qModalTitle" style="margin:0;font-family:var(--font-display);font-size:1.5rem">Question Psychometric Analysis</h2>
+          <span id="qModalMeta" style="font-size:0.85rem;color:var(--color-text-secondary)"></span>
+        </div>
+        <button id="closeQModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <div id="qModalBody"></div>
+    </div>
+  </div>
+
 </div>
+
 <script src="/js/config.js"></script>
 <script src="/js/common.js"></script>
 <script src="/js/chart.umd.js"></script>
 <script src="/js/admin.js"></script>
+<script>
+// Password toggle for admin login
+const passInput = document.getElementById('adminPasswordInput');
+const passToggle = document.getElementById('adminTogglePassword');
+if (passToggle && passInput) {
+  passToggle.addEventListener('click', () => {
+    if (passInput.type === 'password') {
+      passInput.type = 'text';
+      passToggle.textContent = 'Hide';
+    } else {
+      passInput.type = 'password';
+      passToggle.textContent = 'Show';
+    }
+  });
+}
+</script>
 </body>
 </html>

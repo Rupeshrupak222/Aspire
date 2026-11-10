@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08090B">
+  <title>Sign In — Aspire by Adyapan</title>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/png" href="/assets/logo/aspire-favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo/aspire-favicon.png">
+  <style>
+    body {
+      background-color: var(--color-midnight);
+      color: var(--color-text-on-dark);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow-x: hidden;
+    }
+    .auth-bg-lines {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.25;
+      background: radial-gradient(circle at 50% 35%, rgba(255, 201, 0, 0.08) 0%, transparent 60%);
+    }
+    .auth-header {
+      padding: 24px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 10;
+    }
+    .auth-card-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      z-index: 10;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 460px;
+      background-color: var(--color-dark-surface);
+      border: 1px solid var(--color-dark-border);
+      border-radius: 20px;
+      padding: clamp(28px, 4vw, 44px);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.55), 0 0 40px rgba(255, 201, 0, 0.05);
+      position: relative;
+    }
+    .auth-card::before {
+      content: "";
+      position: absolute;
+      top: -1px;
+      left: 15%;
+      right: 15%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+    }
+    .auth-card h1 {
+      color: var(--color-text-on-dark);
+      font-size: 2rem;
+      margin-bottom: 6px;
+    }
+    .auth-card .sub {
+      color: var(--color-text-muted-on-dark);
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+    }
+    .auth-card label {
+      color: var(--color-text-muted-on-dark);
+      font-size: 0.775rem;
+    }
+    .auth-card input {
+      background: var(--color-dark-card);
+      border: 1px solid var(--color-dark-border);
+      color: var(--color-text-on-dark);
+    }
+    .auth-card input:focus {
+      border-color: var(--color-gold);
+      box-shadow: 0 0 0 2px rgba(255, 201, 0, 0.25);
+    }
+    .password-wrap {
+      position: relative;
+    }
+    .password-toggle {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      color: var(--color-text-muted-on-dark);
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .password-toggle:hover {
+      color: var(--color-gold);
+    }
+    .auth-row-extra {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      font-size: 0.8rem;
+    }
+    .auth-checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      cursor: pointer;
+      text-transform: none;
+      font-weight: 400;
+      color: var(--color-text-muted-on-dark);
+    }
+    .auth-checkbox-label input {
+      width: auto;
+    }
+    .forgot-link {
+      color: var(--color-gold);
+      font-weight: 500;
+    }
+    .forgot-link:hover {
+      text-decoration: underline;
+    }
+    .auth-footer-nav {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 0.85rem;
+      color: var(--color-text-muted-on-dark);
+    }
+    .auth-footer-nav a {
+      color: var(--color-gold);
+      font-weight: 600;
+    }
+    .auth-page-footer {
+      padding: 20px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: rgba(245, 243, 239, 0.35);
+      letter-spacing: 0.1em;
+      border-top: 1px solid var(--color-dark-border);
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-bg-lines" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <header class="auth-header">
+    <a class="brand-link" href="/landing.html" aria-label="Aspire Home">
+      <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire by Adyapan" style="height:36px;width:auto;display:block">
+      <span class="brand-title" style="display:none">ASPIRE<span class="brand-dot" style="color:var(--color-gold)">.</span></span>
+      <span class="brand-subtitle" style="display:none">BY ADYAPAN</span>
+    </a>
+    <a class="btn ghost small" href="/index.html" style="color:var(--color-text-on-dark);border-color:var(--color-dark-border)">Register Now ↗</a>
+  </header>
+
+  <!-- Login Form Stage -->
+  <main class="auth-card-wrap">
+    <div class="auth-card">
+      <h1>Welcome Back</h1>
+      <p class="sub">Sign in to continue your journey.</p>
+
+      <div id="loginErr" class="err"></div>
+      <div id="loginOk" class="okmsg"></div>
+
+      <form id="loginForm" novalidate>
+        <label for="adminEmailInput">Email or Username *</label>
+        <input id="adminEmailInput" type="email" required placeholder="name@domain.com" autocomplete="email">
+
+        <label for="adminPasswordInput">Password *</label>
+        <div class="password-wrap">
+          <input id="adminPasswordInput" type="password" required placeholder="••••••••" autocomplete="current-password">
+          <button type="button" class="password-toggle" id="pwdToggleBtn" aria-label="Toggle password visibility">Show</button>
+        </div>
+
+        <div class="auth-row-extra">
+          <label class="auth-checkbox-label">
+            <input type="checkbox" id="rememberMe">
+            <span>Remember me</span>
+          </label>
+          <a class="forgot-link" href="/forgot-password.html">Forgot Password?</a>
+        </div>
+
+        <button id="loginBtn" class="btn" type="submit" style="width:100%;margin-top:24px">
+          <span>Sign In</span>
+          <span aria-hidden="true">↗</span>
+        </button>
+      </form>
+
+      <div class="auth-footer-nav">
+        Don't have an account? <a href="/index.html">Register here</a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Signature -->
+  <footer class="auth-page-footer" style="display:flex;align-items:center;justify-content:center;gap:10px">
+    <img src="/assets/logo/aspire-submark-white.png" alt="Aspire" style="height:18px;width:auto;opacity:0.75">
+    <span>ASPIRE. ACHIEVE. ADYAPAN. &copy; 2026 ALL RIGHTS RESERVED.</span>
+  </footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/common.js"></script>
+  <script>
+    const emailInput = document.getElementById('adminEmailInput');
+    const pwdInput = document.getElementById('adminPasswordInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginErr = document.getElementById('loginErr');
+    const pwdToggleBtn = document.getElementById('pwdToggleBtn');
+    const form = document.getElementById('loginForm');
+
+    pwdToggleBtn?.addEventListener('click', () => {
+      const isPwd = pwdInput.type === 'password';
+      pwdInput.type = isPwd ? 'text' : 'password';
+      pwdToggleBtn.textContent = isPwd ? 'Hide' : 'Show';
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      loginErr.style.display = 'none';
+      const email = emailInput.value.trim();
+      const password = pwdInput.value;
+
+      if (!email || !password) {
+        showErr('loginErr', 'Please enter your email and password.');
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Authenticating…';
+
+      try {
+        const res = await api('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password })
+        });
+
+        if (res.token) {
+          localStorage.setItem('aspire_auth_token', res.token);
+          if (res.user) localStorage.setItem('aspire_auth_user', JSON.stringify(res.user));
+          // Route based on role
+          if (['SUPER_ADMIN', 'ORG_ADMIN', 'EXAM_MANAGER', 'EVALUATOR', 'VIEWER'].includes(res.user?.role)) {
+            window.location.href = '/admin.html';
+          } else {
+            window.location.href = '/candidate-dashboard.html';
+          }
+        } else {
+          showErr('loginErr', 'Authentication failed. Please check your credentials.');
+        }
+      } catch (err) {
+        showErr('loginErr', err.message || 'Login failed. Please check your credentials.');
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = '<span>Sign In</span> <span aria-hidden="true">↗</span>';
+      }
+    });
+  </script>
+</body>
+</html>
+

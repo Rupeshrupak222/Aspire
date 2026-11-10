@@ -72,6 +72,7 @@
     "pdfkit": "^0.17.1",
     "pino": "^10.4.0",
     "simple-statistics": "^8.0.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -371,11 +371,48 @@
   }
 
   // --------------------------------------------------------------------------
-  // 9. Process Connecting Line Fill Animation
+  // 9. Process Connecting Line Fill Animation & Exact Alignment
   // --------------------------------------------------------------------------
   function initProcessLine() {
     const section = document.querySelector('#experience');
+    const line = document.querySelector('.process-connecting-line');
     const lineProgress = document.querySelector('#processLineProgress');
+    const regTitle = document.querySelector('.process-step-item:first-child .step-name');
+    const celTitle = document.querySelector('.process-step-item.step-celebrate .step-name');
+    const wrapper = document.querySelector('.process-track-wrapper');
+
+    function alignLine() {
+      if (!line || !regTitle || !celTitle || !wrapper) return;
+      if (window.innerWidth >= 992) {
+        const wrapRect = wrapper.getBoundingClientRect();
+        const regRect = regTitle.getBoundingClientRect();
+        const celRect = celTitle.getBoundingClientRect();
+        const leftOffset = Math.max(0, regRect.left - wrapRect.left);
+        const totalWidth = Math.max(0, celRect.right - regRect.left);
+        line.style.left = `${leftOffset}px`;
+        line.style.width = `${totalWidth}px`;
+        line.style.right = 'auto';
+
+        // Vertically center line precisely halfway between description text and icon circles
+        const descEl = document.querySelector('.step-desc');
+        const circleEl = document.querySelector('.step-icon-circle');
+        if (descEl && circleEl) {
+          const descRect = descEl.getBoundingClientRect();
+          const circleRect = circleEl.getBoundingClientRect();
+          const midY = (descRect.bottom + circleRect.top) / 2 - wrapRect.top - 1;
+          line.style.top = `${midY}px`;
+        }
+      } else {
+        line.style.left = '';
+        line.style.width = '';
+        line.style.right = '';
+        line.style.top = '';
+      }
+    }
+
+    alignLine();
+    window.addEventListener('resize', alignLine, { passive: true });
+
     if (!section || !lineProgress) return;
 
     if (reduceMotion || !('IntersectionObserver' in window)) {
@@ -385,6 +422,7 @@
 
     const observer = new IntersectionObserver((entries) => {
       if (entries[0].isIntersecting) {
+        alignLine();
         lineProgress.style.width = '100%';
         observer.disconnect();
       }

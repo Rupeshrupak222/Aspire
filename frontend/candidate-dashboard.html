@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08090B">
+  <title>Candidate Portal — Aspire by Adyapan</title>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" type="image/png" href="/assets/logo/aspire-favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo/aspire-favicon.png">
+  <style>
+    /* Candidate Shell Layout */
+    .candidate-shell {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      min-height: 100vh;
+      background-color: var(--color-ivory);
+    }
+    @media (max-width: 900px) {
+      .candidate-shell {
+        grid-template-columns: 1fr;
+      }
+      .app-sidebar {
+        display: none;
+      }
+    }
+    .candidate-content {
+      padding: clamp(24px, 4vw, 48px);
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .candidate-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .candidate-greeting h1 {
+      font-size: clamp(24px, 2.8vw, 36px);
+      margin-bottom: 4px;
+    }
+    .candidate-greeting p {
+      color: var(--color-text-secondary);
+      font-size: 0.95rem;
+    }
+    /* Section Panes */
+    .candidate-pane {
+      display: none;
+    }
+    .candidate-pane.active {
+      display: block;
+      animation: fadeIn 0.3s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    /* Progress KPI Grid */
+    .cand-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+    .cand-card {
+      background: #FFFFFF;
+      border: 1px solid var(--color-light-border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+    }
+    /* Next Assessment Card */
+    .next-assessment-card {
+      background: var(--color-midnight);
+      color: var(--color-text-on-dark);
+      border-radius: 20px;
+      padding: clamp(24px, 4vw, 40px);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 24px;
+      margin-bottom: 32px;
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--color-dark-border);
+    }
+    .next-assessment-card::before {
+      content: "";
+      position: absolute;
+      top: -100px;
+      right: -100px;
+      width: 300px;
+      height: 300px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 201, 0, 0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .assessment-item-card {
+      background: #FFFFFF;
+      border: 1px solid var(--color-light-border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    /* Certificate Frame */
+    .certificate-diploma-frame {
+      background: #FFFFFF;
+      border: 8px double #C5A059;
+      border-radius: 12px;
+      padding: clamp(32px, 5vw, 60px);
+      text-align: center;
+      max-width: 800px;
+      margin: 20px auto;
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.08);
+      position: relative;
+    }
+    .cert-heading-top {
+      font-size: 0.75rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: #8C6D23;
+      margin-bottom: 12px;
+    }
+    .cert-title-main {
+      font-family: var(--font-display);
+      font-size: clamp(28px, 4vw, 44px);
+      color: var(--color-midnight);
+      margin-bottom: 8px;
+    }
+    .cert-candidate-name {
+      font-family: var(--font-display);
+      font-size: clamp(24px, 3.5vw, 38px);
+      font-style: italic;
+      color: #8C6D23;
+      margin: 18px 0;
+      border-bottom: 1px solid rgba(197, 160, 89, 0.35);
+      display: inline-block;
+      padding: 0 40px 8px;
+    }
+    .cert-gold-seal {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #FFE485 0%, #FFC900 60%, #B88900 100%);
+      color: #08090B;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 4px 16px rgba(184, 137, 0, 0.4);
+      margin: 20px auto 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="candidate-shell">
+    
+    <!-- Midnight Black Left Sidebar -->
+    <aside class="app-sidebar">
+      <div>
+        <div class="sidebar-header">
+          <a class="sidebar-logo" href="/landing.html">
+            <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire by Adyapan" style="height:36px;width:auto;display:block">
+            <span class="brand-main" style="display:none">ASPIRE<span>.</span></span>
+            <span class="brand-sub" style="display:none">BY ADYAPAN</span>
+          </a>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Candidate Portal Navigation">
+          <a class="sidebar-item active" href="#dashboard" data-pane="pane-dashboard">
+            <span>📊</span> <span>Dashboard</span>
+          </a>
+          <a class="sidebar-item" href="#profile" data-pane="pane-profile">
+            <span>👤</span> <span>My Profile</span>
+          </a>
+          <a class="sidebar-item" href="#assessments" data-pane="pane-assessments">
+            <span>📝</span> <span>Assessments</span>
+          </a>
+          <a class="sidebar-item" href="#results" data-pane="pane-results">
+            <span>🏆</span> <span>Results</span>
+          </a>
+          <a class="sidebar-item" href="#scholarship" data-pane="pane-scholarship">
+            <span>🎓</span> <span>Scholarship</span>
+          </a>
+          <a class="sidebar-item" href="#certificate" data-pane="pane-certificate">
+            <span>📜</span> <span>Certificate</span>
+          </a>
+          <a class="sidebar-item" href="#support" data-pane="pane-support">
+            <span>💬</span> <span>Support & FAQs</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="user-badge-mini">
+          <div class="user-avatar-mini" id="candAvatar">C</div>
+          <div>
+            <div style="font-size:0.8rem;font-weight:600;color:var(--color-text-on-dark)" id="candNavName">Candidate</div>
+            <div style="font-size:0.7rem;color:var(--color-gold)">Active Candidate</div>
+          </div>
+        </div>
+        <button id="candLogoutBtn" class="btn ghost small" style="color:var(--color-text-on-dark);border-color:var(--color-dark-border);padding:4px 10px;font-size:0.75rem">Exit</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="candidate-content">
+      
+      <!-- Topbar Header -->
+      <header class="candidate-topbar">
+        <div class="candidate-greeting">
+          <h1 id="greetingHeading">Good Morning, Candidate!</h1>
+          <p id="greetingSub">Keep going. Your potential is extraordinary.</p>
+        </div>
+        <div>
+          <a class="btn small" href="/instructions.html" id="topStartTestBtn">
+            <span>Enter Assessment Room</span>
+            <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </header>
+
+      <!-- PANE 1: DASHBOARD -->
+      <section class="candidate-pane active" id="pane-dashboard">
+        <!-- Next Assessment Hero Card -->
+        <div class="next-assessment-card">
+          <div>
+            <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.18em;color:var(--color-gold);text-transform:uppercase;margin-bottom:8px">NEXT UPCOMING ASSESSMENT</div>
+            <h2 style="color:var(--color-text-on-dark);font-size:1.8rem;margin-bottom:6px" id="dashExamTitle">Aspire Scholarship Test</h2>
+            <p style="color:var(--color-text-muted-on-dark);font-size:0.9rem;margin:0" id="dashExamDetails">90 Minutes · 40 Questions (Aptitude, Technical & Code)</p>
+          </div>
+          <div>
+            <a class="btn" href="/instructions.html" style="margin-top:0">
+              <span>Start Assessment</span>
+              <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Progress Overview -->
+        <h2 style="margin-bottom:16px">Your Progress</h2>
+        <div class="cand-kpi-grid">
+          <div class="cand-card">
+            <div style="font-size:0.75rem;font-weight:600;text-transform:uppercase;color:var(--color-text-secondary)">Total Assessments</div>
+            <div style="font-family:var(--font-display);font-size:2rem;font-weight:700;color:var(--color-midnight);margin:6px 0" id="kpiAssessmentsCount">1</div>
+            <div style="font-size:0.75rem;color:var(--color-text-muted)">Enrolled test track</div>
+          </div>
+          <div class="cand-card">
+            <div style="font-size:0.75rem;font-weight:600;text-transform:uppercase;color:var(--color-text-secondary)">Scholarship Status</div>
+            <div style="font-family:var(--font-display);font-size:2rem;font-weight:700;color:var(--color-gold);margin:6px 0" id="kpiScholarshipTier">Eligible</div>
+            <div style="font-size:0.75rem;color:var(--color-text-muted)">Up to 100% available</div>
+          </div>
+          <div class="cand-card">
+            <div style="font-size:0.75rem;font-weight:600;text-transform:uppercase;color:var(--color-text-secondary)">Profile Completion</div>
+            <div style="font-family:var(--font-display);font-size:2rem;font-weight:700;color:var(--color-midnight);margin:6px 0" id="kpiProfilePct">100%</div>
+            <div style="font-size:0.75rem;color:var(--color-text-muted)">Identity verified</div>
+          </div>
+        </div>
+
+        <!-- Recent Results Snippet -->
+        <div class="cand-card" style="margin-top:24px">
+          <h3>Recent Performance Overview</h3>
+          <p class="sub" style="margin-bottom:16px">Summary of completed evaluations and issued credentials.</p>
+          <div id="recentResultBox">
+            <p style="color:var(--color-text-secondary);font-size:0.9rem">No finalized submissions yet. Complete your assessment to view results, claims, and certificates.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 2: MY PROFILE -->
+      <section class="candidate-pane" id="pane-profile">
+        <div class="cand-card">
+          <h2>Candidate Profile</h2>
+          <p class="sub">Your verified academic and personal credentials.</p>
+          
+          <div class="row" style="margin-top:16px">
+            <div>
+              <label>Full Name</label>
+              <input id="profName" readonly>
+            </div>
+            <div>
+              <label>Mobile Number</label>
+              <input id="profPhone" readonly>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label>Email Address</label>
+              <input id="profEmail" readonly>
+            </div>
+            <div>
+              <label>College / University</label>
+              <input id="profCollege" readonly>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label>Domain Track</label>
+              <input id="profTrack" readonly>
+            </div>
+            <div>
+              <label>Graduation Year</label>
+              <input id="profYear" readonly>
+            </div>
+          </div>
+
+          <p class="sub" style="margin-top:20px;font-size:0.8rem">
+            * To update verified institutional contact information, please contact your scholarship coordinator.
+          </p>
+        </div>
+      </section>
+
+      <!-- PANE 3: ASSESSMENTS -->
+      <section class="candidate-pane" id="pane-assessments">
+        <h2>Your Assessments</h2>
+        <p class="sub">Listing of allocated examinations and technical evaluations.</p>
+
+        <div class="assessment-item-card">
+          <div>
+            <span class="status-badge status-live" style="margin-bottom:8px">Active & Ready</span>
+            <h3 style="margin-bottom:4px" id="listExamTitle">Aspire Scholarship Test</h3>
+            <p style="font-size:0.85rem;color:var(--color-text-secondary);margin:0">Comprehensive Aptitude, Technical Thinking & Algorithm Coding</p>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <a class="btn" href="/instructions.html" style="margin-top:0">Start Test ↗</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 4: RESULTS -->
+      <section class="candidate-pane" id="pane-results">
+        <h2>Assessment Results</h2>
+        <p class="sub">View final scores, breakdown tables, and official grades.</p>
+        <div class="cand-card" id="resultsPaneContent">
+          <p style="color:var(--color-text-secondary)">Your assessment is currently in progress. Final scores and test summaries will appear here once submitted.</p>
+          <a class="btn" href="/instructions.html" style="margin-top:16px">Go to Assessment Room ↗</a>
+        </div>
+      </section>
+
+      <!-- PANE 5: SCHOLARSHIP -->
+      <section class="candidate-pane" id="pane-scholarship">
+        <h2>Scholarship Award Details</h2>
+        <p class="sub">Information regarding your tuition fee waiver and grant redemption.</p>
+        <div class="cand-card" style="text-align:center;padding:48px 24px">
+          <div style="font-size:0.8rem;letter-spacing:0.2em;font-weight:600;color:var(--color-gold-deep);text-transform:uppercase">AWARDED PERCENTAGE</div>
+          <div style="font-family:var(--font-display);font-size:4rem;font-weight:700;color:var(--color-gold);line-height:1;margin:12px 0" id="schAwardPct">100%</div>
+          <p style="max-width:480px;margin:0 auto 20px;font-size:0.95rem;color:var(--color-text-secondary)" id="schDescription">
+            Awarded for distinguished performance on the Aspire by Adyapan evaluation.
+          </p>
+          <div style="background:#FAF8F5;border:1px solid rgba(255,201,0,0.3);border-radius:12px;padding:16px;max-width:400px;margin:0 auto">
+            <span style="font-size:0.75rem;color:var(--color-text-secondary);text-transform:uppercase;font-weight:600">Claim Code</span>
+            <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:700" id="schClaimCode">—</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 6: CERTIFICATE -->
+      <section class="candidate-pane" id="pane-certificate">
+        <h2>Achievement Certificate</h2>
+        <p class="sub">Official digitally signed certificate of academic achievement.</p>
+        
+        <div class="certificate-diploma-frame">
+          <img src="/assets/logo/aspire-secondary-logo.png" alt="Aspire" style="height:44px;width:auto;margin:0 auto 12px;display:block">
+          <div class="cert-heading-top">ASPIRE BY ADYAPAN · SCHOLARSHIP FOUNDATION</div>
+          <div class="cert-title-main">Certificate of Scholarship</div>
+          <p style="font-size:0.9rem;color:var(--color-text-secondary)">This credential confirms that</p>
+          <div class="cert-candidate-name" id="certCandName">Candidate Name</div>
+          <p style="font-size:0.95rem;max-width:540px;margin:0 auto;line-height:1.7;color:var(--color-text-primary)">
+            has demonstrated exceptional merit on the standardized evaluation and is hereby awarded the official merit grant.
+          </p>
+          <div style="margin:16px auto 10px;display:flex;justify-content:center">
+            <img src="/assets/logo/aspire-submark.png" alt="Official Seal" style="width:64px;height:64px;object-fit:contain">
+          </div>
+          <div class="cert-gold-seal" aria-hidden="true" style="display:none">★</div>
+          <div style="font-size:0.8rem;color:var(--color-text-secondary);margin-top:10px">
+            Verified Certificate ID: <strong id="certDisplayId" style="color:var(--color-midnight)">—</strong>
+          </div>
+          <div style="margin-top:24px">
+            <a id="certDownloadLink" class="btn" href="#" download style="margin-top:0">
+              <span>Download Official PDF</span>
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- PANE 7: SUPPORT & FAQS -->
+      <section class="candidate-pane" id="pane-support">
+        <h2>Support & Candidate Guidance</h2>
+        <p class="sub">Frequently asked questions and technical troubleshooting assistance.</p>
+        
+        <div class="cand-card">
+          <h3>Assessment Integrity & Rules</h3>
+          <p style="font-size:0.9rem;line-height:1.7;color:var(--color-text-secondary);margin-bottom:20px">
+            The assessment must be completed in a single uninterrupted sitting. Tab-switching, copy-pasting, and window minimizing are continuously recorded by the behavioral proctoring engine.
+          </p>
+
+          <h3>Network Recovery Assistance</h3>
+          <p style="font-size:0.9rem;line-height:1.7;color:var(--color-text-secondary);margin-bottom:20px">
+            If your internet connection experiences momentary loss, do not close your browser tab. Your responses are safely stored in your browser's local cache and will automatically synchronize when your connection restores.
+          </p>
+
+          <h3>Need Further Assistance?</h3>
+          <p style="font-size:0.9rem;line-height:1.7;color:var(--color-text-secondary)">
+            Reach out to our academic counseling desk at <strong>support@adyapan.internal</strong> or consult your institutional administrator.
+          </p>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/candidate.js"></script>
+</body>
+</html>
+

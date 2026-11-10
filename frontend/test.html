@@ -1,40 +1,246 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aspire by Adyapan — Test</title>
+  <meta name="theme-color" content="#08090B">
+  <title>Assessment Room — Aspire by Adyapan</title>
+  <link rel="stylesheet" href="/assets/fonts/fonts.css">
   <link rel="stylesheet" href="/css/style.css">
-</head>
+  <link rel="icon" type="image/png" href="/assets/logo/aspire-favicon.png">
+  <link rel="apple-touch-icon" href="/assets/logo/aspire-favicon.png">
+  <style>
+    body {
+      background-color: var(--color-ivory);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .test-header {
+      background: var(--color-midnight);
+      color: var(--color-text-on-dark);
+      padding: 12px clamp(16px, 3vw, 36px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--color-dark-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .test-header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .test-meta-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--color-text-on-dark);
+    }
+    .test-meta-student {
+      font-size: 0.825rem;
+      color: var(--color-text-muted-on-dark);
+    }
+    .test-header-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .timer-display {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--color-gold);
+      background: rgba(255, 201, 0, 0.1);
+      border: 1px solid rgba(255, 201, 0, 0.25);
+      padding: 6px 16px;
+      border-radius: 9999px;
+    }
+    .timer-display.danger {
+      color: #FFFFFF;
+      background: var(--color-danger);
+      border-color: var(--color-danger);
+      animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.85; }
+      100% { opacity: 1; }
+    }
+    .test-stage-layout {
+      flex: 1;
+      max-width: 1360px;
+      margin: 24px auto;
+      padding: 0 20px;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 24px;
+      align-items: flex-start;
+    }
+    @media (max-width: 900px) {
+      .test-stage-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    /* Left Panel: Palette & Status */
+    .palette-card {
+      background: var(--color-light-card);
+      border: 1px solid var(--color-light-border);
+      border-radius: 16px;
+      padding: 22px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+      position: sticky;
+      top: 80px;
+    }
+    .palette-header {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--color-midnight);
+      margin-bottom: 6px;
+    }
+    .palette-legend {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 14px 0 18px;
+      font-size: 0.775rem;
+      color: var(--color-text-secondary);
+      border-bottom: 1px solid var(--color-light-border);
+      padding-bottom: 14px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .legend-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid var(--color-light-border);
+    }
+    .legend-dot.answered { background: rgba(255, 201, 0, 0.25); border-color: var(--color-gold); }
+    .legend-dot.current { border: 2px solid var(--color-gold); }
+    .legend-dot.unvisited { background: #FFFFFF; }
 
+    /* Right Main Panel: Question Canvas */
+    .question-card {
+      background: var(--color-light-card);
+      border: 1px solid var(--color-light-border);
+      border-radius: 16px;
+      padding: clamp(24px, 3.5vw, 40px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .q-top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--color-light-border);
+      padding-bottom: 14px;
+    }
+    .q-count-badge {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--color-gold-deep);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .q-category-tag {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      background: #F3F4F6;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      color: var(--color-text-secondary);
+    }
+  </style>
+</head>
 <body>
-  <div class="timer" id="timerBar">
-    <div><span id="testTitle">Aspire Scholarship Test</span> · <span id="studentName" style="font-weight:400"></span>
-    </div>
-    <div style="display:flex;align-items:center;gap:12px">
-      <div id="syncStatusBadge" class="sync-badge synced" title="Connection & sync status">🟢 Synced</div>
-      <div>⏱ <span id="timerText">--:--</span></div>
-    </div>
-  </div>
-  <div class="wrap">
-    <div id="multiTabBanner" style="display:none;background:#fef2f2;border:1px solid #f87171;color:#991b1b;padding:12px 16px;border-radius:8px;margin-bottom:16px;text-align:center;">
-      <strong>⚠️ Assessment Active in Another Window or Tab</strong>
-      <p style="margin:6px 0 10px 0;font-size:13px;">This test session is active in another tab. To prevent duplicate submissions and answer overwrites, actions here are disabled.</p>
-      <button id="claimSessionBtn" class="btn small" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">Take Over Session in This Tab</button>
-    </div>
-    <div class="card">
-      <div id="qcount" style="color:var(--muted);font-size:14px"></div>
-      <div class="palette" id="palette"></div>
-      <div id="qbox"></div>
-      <div class="navbtns">
-        <button id="prevBtn" class="btn ghost">← Previous</button>
-        <button id="nextBtn" class="btn ghost">Next →</button>
+  <!-- Header Bar -->
+  <header class="test-header" id="timerBar">
+    <div class="test-header-left">
+      <a class="brand-link" href="#" style="pointer-events:none">
+        <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire by Adyapan" style="height:28px;width:auto;display:block">
+        <span class="brand-title" style="display:none">ASPIRE<span class="brand-dot">.</span></span>
+      </a>
+      <div>
+        <div class="test-meta-title" id="testTitle">Aspire Scholarship Test</div>
+        <div class="test-meta-student" id="studentName"></div>
       </div>
-      <div style="text-align:center"><button id="submitBtn" class="btn">Submit Test</button></div>
-      <div id="testErr" class="err"></div>
     </div>
-  </div>
+
+    <div class="test-header-right">
+      <div id="syncStatusBadge" class="sync-badge synced" title="Connection & sync status">🟢 Synced</div>
+      <div class="timer-display">
+        <span aria-hidden="true">⏱</span>
+        <span id="timerText">--:--</span>
+      </div>
+      <button id="submitBtn" class="btn small" style="margin:0;padding:8px 20px">Submit Test</button>
+    </div>
+  </header>
+
+  <!-- Assessment Workspace -->
+  <main class="test-stage-layout">
+    <!-- Left Column: Palette -->
+    <aside class="palette-card">
+      <div class="palette-header">Question Palette</div>
+      <div class="palette-legend">
+        <div class="legend-item">
+          <span class="legend-dot current"></span>
+          <span>Current Question</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot answered"></span>
+          <span>Answered / Saved</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot unvisited"></span>
+          <span>Not Visited</span>
+        </div>
+      </div>
+      <div class="palette" id="palette"></div>
+    </aside>
+
+    <!-- Right Column: Question Content -->
+    <section class="question-card">
+      <!-- Multi Tab Notification Banner -->
+      <div id="multiTabBanner" style="display:none;background:#fef2f2;border:1px solid #f87171;color:#991b1b;padding:12px 16px;border-radius:8px;margin-bottom:16px;text-align:center;">
+        <strong>⚠️ Assessment Active in Another Window or Tab</strong>
+        <p style="margin:6px 0 10px 0;font-size:13px;">This test session is active in another tab. To prevent duplicate submissions and answer overwrites, actions here are disabled.</p>
+        <button id="claimSessionBtn" class="btn small" style="background:#dc2626;color:#fff;border:none;padding:6px 14px;border-radius:4px;cursor:pointer;">Take Over Session in This Tab</button>
+      </div>
+
+      <div>
+        <div class="q-top-row">
+          <span class="q-count-badge" id="qcount">Question 1 of 40</span>
+          <span class="q-category-tag">Evaluation Section</span>
+        </div>
+        <div id="qbox"></div>
+      </div>
+
+      <div>
+        <div class="navbtns">
+          <button id="prevBtn" class="btn ghost">← Previous</button>
+          <button id="nextBtn" class="btn ghost">Next →</button>
+        </div>
+        <div id="testErr" class="err"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Required Scripts for Timer, Worker, Storage, Recovery, Proctoring -->
   <script src="/js/config.js"></script>
   <script src="/js/common.js"></script>
   <script src="/js/vendor/idb-keyval.js"></script>
@@ -44,5 +250,4 @@
   <script src="/js/proctoring.js"></script>
   <script src="/js/test.js"></script>
 </body>
-
 </html>
