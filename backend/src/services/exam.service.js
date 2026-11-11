@@ -277,6 +277,23 @@ function createExam(data, user, req = null) {
 
   const newId = res.lastInsertRowid;
 
+  // Day 22 Metering: Record exam created inventory event
+  if (orgId) {
+    try {
+      const { recordUsageEvent } = require('./subscription/metering.service');
+      recordUsageEvent({
+        organizationId: orgId,
+        resourceKey: 'exams_created',
+        eventType: 'INCREMENT',
+        quantity: 1,
+        referenceType: 'exam',
+        referenceId: String(newId),
+        idempotencyKey: `exam_created_${newId}`,
+        metadata: { name: data.name, code }
+      });
+    } catch (err) {}
+  }
+
   // Automatically seed standard scholarship slabs
   const insSlab = db.prepare(`
     INSERT INTO exam_scholarship_slabs (exam_id, min_score_pct, max_score_pct, discount_pct, tier_name)
@@ -889,6 +906,21 @@ function transitionExamStatus(examId, targetStatus, user, req = null) {
         idempotencyKey: `pub_exam_${examId}`,
         metadata: { examName: exam.name, code: exam.code, publishedBy: user.id }
       });
+
+      // Day 22 Metering: Record exam published event
+      try {
+        const { recordUsageEvent } = require('./subscription/metering.service');
+        recordUsageEvent({
+          organizationId: exam.organization_id,
+          resourceKey: 'exams_published',
+          eventType: 'INCREMENT',
+          quantity: 1,
+          referenceType: 'exam',
+          referenceId: String(examId),
+          idempotencyKey: `exam_published_${examId}`,
+          metadata: { name: exam.name, version: exam.version, code: exam.code }
+        });
+      } catch (err) {}
     }
   }
 

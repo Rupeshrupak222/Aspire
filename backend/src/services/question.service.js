@@ -361,7 +361,26 @@ function createQuestion({ user, data }) {
     marks, isSample, orgId, user.id, user.id
   );
 
-  return { id: r.lastInsertRowid, title, status };
+  const questionId = r.lastInsertRowid;
+
+  // Day 22 Metering: Record question creation event
+  if (orgId) {
+    try {
+      const { recordUsageEvent } = require('./subscription/metering.service');
+      recordUsageEvent({
+        organizationId: orgId,
+        resourceKey: 'questions',
+        eventType: 'INCREMENT',
+        quantity: 1,
+        referenceType: 'question',
+        referenceId: String(questionId),
+        idempotencyKey: `question_created_${questionId}`,
+        metadata: { type, category, difficulty, topic }
+      });
+    } catch (err) {}
+  }
+
+  return { id: questionId, title, status };
 }
 
 /**

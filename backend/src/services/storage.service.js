@@ -189,6 +189,16 @@ class StorageService {
       const publicBase = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
       const url = publicBase ? `${publicBase}/${key}` : `/${key}`;
 
+      this._recordStorageUpload({
+        organizationId: Number(organizationId),
+        key,
+        assetType,
+        originalFilename,
+        mimeType: validation.mimeType,
+        sizeBytes: validation.sizeBytes,
+        provider: 'r2'
+      });
+
       return {
         key,
         url,
@@ -214,6 +224,16 @@ class StorageService {
 
       const url = `/api/storage/assets/${key}`;
 
+      this._recordStorageUpload({
+        organizationId: Number(organizationId),
+        key,
+        assetType,
+        originalFilename,
+        mimeType: validation.mimeType,
+        sizeBytes: validation.sizeBytes,
+        provider: 'local'
+      });
+
       return {
         key,
         url,
@@ -222,6 +242,51 @@ class StorageService {
         provider: 'local'
       };
     }
+  }
+
+  _recordStorageUpload({ organizationId, key, assetType, originalFilename, mimeType, sizeBytes, provider }) {
+    try {
+      const { db } = require('../db');
+      db.prepare(`
+        INSERT INTO organization_storage_objects (
+          organization_id, storage_key, category, file_name, mime_type, size_bytes, provider
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(storage_key) DO UPDATE SET
+          size_bytes = excluded.size_bytes,
+          mime_type = excluded.mime_type,
+          updated_at = datetime('now')
+      `).run(
+        organizationId,
+        key,
+        assetType || 'branding',
+        originalFilename || path.basename(key),
+        mimeType,
+        sizeBytes,
+        provider
+      );
+
+      const { recordUsageEvent } = require('./subscription/metering.service');
+      recordUsageEvent({
+        organizationId,
+        resourceKey: 'storage_bytes',
+        eventType: 'INCREMENT',
+        quantity: sizeBytes,
+        referenceType: 'storage_object',
+        referenceId: key,
+        idempotencyKey: `storage_bytes_${key}`,
+        metadata: { assetType, mimeType, originalFilename }
+      });
+      recordUsageEvent({
+        organizationId,
+        resourceKey: 'storage_objects',
+        eventType: 'INCREMENT',
+        quantity: 1,
+        referenceType: 'storage_object',
+        referenceId: key,
+        idempotencyKey: `storage_object_${key}`,
+        metadata: { assetType }
+      });
+    } catch (err) {}
   }
 
   /**
@@ -250,6 +315,36 @@ class StorageService {
       } catch {}
       this.mockRegistry.delete(key);
     }
+
+    // Record storage deletion in database and event ledger
+    try {
+      const { db } = require('../db');
+      const existing = db.prepare('SELECT * FROM organization_storage_objects WHERE organization_id = ? AND storage_key = ?').get(organizationId, key);
+      if (existing) {
+        db.prepare('DELETE FROM organization_storage_objects WHERE id = ?').run(existing.id);
+        const { recordUsageEvent } = require('./subscription/metering.service');
+        recordUsageEvent({
+          organizationId: Number(organizationId),
+          resourceKey: 'storage_bytes',
+          eventType: 'DECREMENT',
+          quantity: existing.size_bytes,
+          referenceType: 'storage_object',
+          referenceId: key,
+          idempotencyKey: `storage_del_bytes_${key}`,
+          metadata: { category: existing.category }
+        });
+        recordUsageEvent({
+          organizationId: Number(organizationId),
+          resourceKey: 'storage_objects',
+          eventType: 'DECREMENT',
+          quantity: 1,
+          referenceType: 'storage_object',
+          referenceId: key,
+          idempotencyKey: `storage_del_obj_${key}`,
+          metadata: { category: existing.category }
+        });
+      }
+    } catch (err) {}
 
     return true;
   }

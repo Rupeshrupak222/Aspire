@@ -346,6 +346,21 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
         assignedOrgId
       );
       studentId = s.lastInsertRowid;
+
+      // Day 22 Metering: Record distinct candidate registered event
+      try {
+        const { recordUsageEvent } = require('../services/subscription/metering.service');
+        recordUsageEvent({
+          organizationId: assignedOrgId,
+          resourceKey: 'candidates',
+          eventType: 'INCREMENT',
+          quantity: 1,
+          referenceType: 'student',
+          referenceId: String(studentId),
+          idempotencyKey: `candidate_registered_${studentId}`,
+          metadata: { phone: normPhone, email, examId: targetExamId }
+        });
+      } catch (err) {}
     }
 
     const token = randHex(24);
@@ -353,7 +368,7 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
     const graceSec = 60;
     const deadline_at = timerSubmissionService.calculateAuthoritativeDeadline(started_at, durationMin, graceSec);
     const expires_at = deadline_at;
-    db.prepare(`
+    const attInsert = db.prepare(`
       INSERT INTO attempts (
         token, student_id, exam_id, exam_version, organization_id, started_at, expires_at, deadline_at, grace_period_seconds,
         question_ids_json, shuffle_map_json, exam_snapshot_json, questions_snapshot_json,
@@ -376,6 +391,23 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
       shuffleSeed || null,
       snapshotHash || null
     );
+
+    const attemptId = attInsert.lastInsertRowid;
+
+    // Day 22 Metering: Record new assessment attempt creation event
+    try {
+      const { recordUsageEvent } = require('../services/subscription/metering.service');
+      recordUsageEvent({
+        organizationId: assignedOrgId,
+        resourceKey: 'attempts',
+        eventType: 'INCREMENT',
+        quantity: 1,
+        referenceType: 'attempt',
+        referenceId: String(attemptId),
+        idempotencyKey: `attempt_created_${attemptId}`,
+        metadata: { examId: targetExamId, studentId, version: targetExam ? targetExam.version : 1 }
+      });
+    } catch (err) {}
 
     return { token, expires_at, deadline_at, durationMin };
   });
@@ -683,6 +715,21 @@ router.post('/attempt/:token/code-submit', codeExecutionLimiter, validate({ para
       sourceHash,
       sourceCode
     );
+
+    // Day 22 Metering: Record code execution submission accepted
+    try {
+      const { recordUsageEvent } = require('../services/subscription/metering.service');
+      recordUsageEvent({
+        organizationId: att.organization_id || 1,
+        resourceKey: 'code_executions',
+        eventType: 'INCREMENT',
+        quantity: 1,
+        referenceType: 'coding_submission',
+        referenceId: submissionId,
+        idempotencyKey: `code_execution_${submissionId}`,
+        metadata: { attemptId: att.id, questionId: question.id, language: canonicalLang }
+      });
+    } catch (err) {}
 
     db.prepare(`
       INSERT INTO outbox_events (

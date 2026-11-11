@@ -3999,6 +3999,132 @@ async function loadSubscription() {
   }
 }
 
+let usageTrendsChartInstance = null;
+
+async function loadUsageTrends(resourceKey = '', timeframe = '30d') {
+  try {
+    const days = timeframe === '7d' ? 7 : (timeframe === '90d' ? 90 : 30);
+    const startDate = new Date(Date.now() - (days - 1) * 86400000).toISOString().split('T')[0];
+    const endDate = new Date().toISOString().split('T')[0];
+
+    const q = new URLSearchParams({ start_date: startDate, end_date: endDate });
+    if (resourceKey) q.append('resource_key', resourceKey);
+
+    const res = await aapi('/api/organization/usage/trends?' + q.toString());
+    const trends = res.data || {};
+    renderUsageTrendsChart(trends, resourceKey);
+  } catch (err) {
+    console.warn('Failed to load usage trends:', err);
+  }
+}
+
+function renderUsageTrendsChart(trends, activeResource) {
+  const canvas = document.getElementById('usageTrendsChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  if (usageTrendsChartInstance) {
+    usageTrendsChartInstance.destroy();
+    usageTrendsChartInstance = null;
+  }
+
+  const labels = (trends.dates || []).map((d) => {
+    const parts = d.split('-');
+    return parts.length === 3 ? `${parts[1]}/${parts[2]}` : d;
+  });
+
+  const colorMap = {
+    candidates: '#3B82F6',
+    attempts: '#10B981',
+    exams_published: '#F59E0B',
+    certificates: '#EC4899',
+    code_executions: '#8B5CF6',
+    storage_bytes: '#6366F1'
+  };
+
+  const labelMap = {
+    candidates: 'Candidates',
+    attempts: 'Attempts',
+    exams_published: 'Exams Published',
+    certificates: 'Certificates',
+    code_executions: 'Code Executions',
+    storage_bytes: 'Storage (Bytes)'
+  };
+
+  const datasets = [];
+  const series = trends.series || {};
+
+  for (const [key, pts] of Object.entries(series)) {
+    if (activeResource && key !== activeResource) continue;
+    const color = colorMap[key] || '#64748B';
+    datasets.push({
+      label: labelMap[key] || key,
+      data: pts.map((p) => p.consumed || p.netUsage || 0),
+      borderColor: color,
+      backgroundColor: color + '15',
+      fill: !activeResource ? false : true,
+      tension: 0.35,
+      borderWidth: 2,
+      pointRadius: labels.length > 30 ? 0 : 3
+    });
+  }
+
+  usageTrendsChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { boxWidth: 12, font: { family: 'Poppins', size: 11 } } },
+        tooltip: { padding: 10, cornerRadius: 6 }
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: 'Poppins', size: 10 } } },
+        y: { beginAtZero: true, grid: { color: '#F1F5F9' }, ticks: { font: { family: 'Poppins', size: 10 } } }
+      }
+    }
+  });
+}
+
+async function loadUsageHistory() {
+  const tbody = document.getElementById('usageHistoryTableBody');
+  if (!tbody) return;
+
+  try {
+    const res = await aapi('/api/organization/usage/history?limit=15');
+    const data = res.data || {};
+    const events = data.events || [];
+
+    if (events.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--color-text-muted)">No usage events recorded yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = events.map((e) => {
+      const dateStr = e.createdAt ? new Date(e.createdAt).toLocaleString() : '—';
+      const isPositive = e.eventType === 'INCREMENT' || e.eventType === 'CONSUMED';
+      const isNegative = e.eventType === 'DECREMENT' || e.eventType === 'RELEASED';
+      const deltaColor = isPositive ? '#059669' : (isNegative ? '#DC2626' : '#2563EB');
+      const prefix = isPositive ? '+' : '';
+
+      return `
+        <tr style="border-bottom:1px solid #F1F5F9">
+          <td style="padding:10px 12px;color:var(--color-text-muted)">${escapeHtml(dateStr)}</td>
+          <td style="padding:10px 12px"><strong style="color:var(--color-navy)">${escapeHtml(e.resourceKey)}</strong></td>
+          <td style="padding:10px 12px"><span style="font-size:0.75rem;padding:2px 8px;border-radius:12px;background:#F8FAFC;border:1px solid #E2E8F0;font-weight:600">${escapeHtml(e.eventType)}</span></td>
+          <td style="padding:10px 12px;color:${deltaColor};font-weight:600">${prefix}${e.quantity}</td>
+          <td style="padding:10px 12px;color:var(--color-text-muted);font-family:monospace;font-size:0.8rem">${escapeHtml(e.referenceId || e.referenceType || '—')}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#DC2626">Failed to load usage history.</td></tr>';
+  }
+}
+
 function renderSubscriptionUI(data) {
   const plan = data.plan || {};
   const sub = data.subscription || {};
@@ -4007,7 +4133,7 @@ function renderSubscriptionUI(data) {
 
   // 1. Current Plan Card
   const planNameEl = document.getElementById('subPlanName');
-  if (planNameEl) planNameEl.textContent = plan.name || 'Enterprise Plan';
+  if (planNameEl) planNameEl.textContent = plan.name || (sub.planName || 'Enterprise Plan');
 
   const statusBadge = document.getElementById('subStatusBadge');
   if (statusBadge) {
@@ -4049,40 +4175,25 @@ function renderSubscriptionUI(data) {
     });
   }
 
-  // 2. Resource Metering Cards
-  const examsRes = resources.exams_monthly || { used: 0, quota: 3, percentage: 0 };
-  const candRes = resources.candidates || { used: 0, quota: 500, percentage: 0 };
+  // 2. Resource Metering Cards (All 7 Resources)
+  const cand = resources.candidates || { current: 0, limit: 500, percentage: 0 };
+  const att = resources.attempts || { total: 0, started: 0, submitted: 0, abandoned: 0 };
+  const ex = resources.exams || { total: 0, drafts: 0, published: 0, monthlyPublished: { used: 0, limit: 3, percentage: 0 } };
+  const qb = resources.questions || { total: 0, active: 0, allocatedToExams: 0, codingCount: 0 };
+  const cert = resources.certificates || { issued: 0, verified: 0 };
+  const code = resources.codeExecutions || { total: 0, passed: 0, compilationError: 0, timeout: 0 };
+  const storage = resources.storage || { totalBytes: 0, totalMegabytes: 0, totalObjects: 0, percentage: 0 };
 
-  // Exams
-  const exUsedEl = document.getElementById('usageExamsUsed');
-  const exQuotaEl = document.getElementById('usageExamsQuota');
-  const exRemEl = document.getElementById('remainingExams');
-  const exPctEl = document.getElementById('pctExams');
-  const exBar = document.getElementById('progressExams');
-  const exBadge = document.getElementById('badgeExamsStatus');
+  const candUsed = cand.current !== undefined ? cand.current : (cand.used || 0);
+  const candLimit = cand.limit !== undefined ? cand.limit : (cand.quota || 500);
+  const candPct = cand.percentage || 0;
 
-  if (exUsedEl) exUsedEl.textContent = examsRes.used;
-  if (exQuotaEl) exQuotaEl.textContent = examsRes.isUnlimited ? 'Unlimited' : examsRes.quota;
-  if (exRemEl) exRemEl.textContent = examsRes.isUnlimited ? 'Unlimited' : examsRes.remaining;
-  if (exPctEl) exPctEl.textContent = examsRes.isUnlimited ? 'N/A' : `${examsRes.percentage}%`;
-  if (exBar) {
-    exBar.style.width = `${Math.min(100, examsRes.percentage)}%`;
-    exBar.style.background = examsRes.isExceeded ? 'var(--color-danger)' : (examsRes.isWarning ? 'var(--color-gold)' : 'var(--color-navy)');
-  }
-  if (exBadge) {
-    if (examsRes.isExceeded) {
-      exBadge.textContent = 'LIMIT REACHED';
-      exBadge.className = 'status-badge danger';
-    } else if (examsRes.isWarning) {
-      exBadge.textContent = 'WARNING';
-      exBadge.className = 'status-badge draft';
-    } else {
-      exBadge.textContent = 'NORMAL';
-      exBadge.className = 'status-badge active';
-    }
-  }
+  const exMonth = ex.monthlyPublished || { used: 0, limit: 3, percentage: 0 };
+  const exUsed = exMonth.used || 0;
+  const exLimit = exMonth.limit !== undefined ? exMonth.limit : 3;
+  const exPct = exMonth.percentage || 0;
 
-  // Candidates
+  // Candidates Card
   const candUsedEl = document.getElementById('usageCandidatesUsed');
   const candQuotaEl = document.getElementById('usageCandidatesQuota');
   const candRemEl = document.getElementById('remainingCandidates');
@@ -4090,25 +4201,99 @@ function renderSubscriptionUI(data) {
   const candBar = document.getElementById('progressCandidates');
   const candBadge = document.getElementById('badgeCandidatesStatus');
 
-  if (candUsedEl) candUsedEl.textContent = candRes.used;
-  if (candQuotaEl) candQuotaEl.textContent = candRes.isUnlimited ? 'Unlimited' : candRes.quota;
-  if (candRemEl) candRemEl.textContent = candRes.isUnlimited ? 'Unlimited' : candRes.remaining;
-  if (candPctEl) candPctEl.textContent = candRes.isUnlimited ? 'N/A' : `${candRes.percentage}%`;
+  if (candUsedEl) candUsedEl.textContent = candUsed;
+  if (candQuotaEl) candQuotaEl.textContent = candLimit === null ? 'Unlimited' : candLimit;
+  if (candRemEl) candRemEl.textContent = candLimit === null ? 'Unlimited' : Math.max(0, candLimit - candUsed);
+  if (candPctEl) candPctEl.textContent = candLimit === null ? 'N/A' : `${candPct}%`;
   if (candBar) {
-    candBar.style.width = `${Math.min(100, candRes.percentage)}%`;
-    candBar.style.background = candRes.isExceeded ? 'var(--color-danger)' : (candRes.isWarning ? 'var(--color-gold)' : 'var(--color-navy)');
+    candBar.style.width = `${Math.min(100, candPct)}%`;
+    candBar.style.background = candPct >= 100 ? '#EF4444' : (candPct >= (sub.softLimitPct || 80) ? 'var(--color-gold)' : 'var(--color-navy)');
   }
   if (candBadge) {
-    if (candRes.isExceeded) {
-      candBadge.textContent = 'LIMIT REACHED';
-      candBadge.className = 'status-badge danger';
-    } else if (candRes.isWarning) {
-      candBadge.textContent = 'WARNING';
-      candBadge.className = 'status-badge draft';
-    } else {
-      candBadge.textContent = 'NORMAL';
-      candBadge.className = 'status-badge active';
-    }
+    candBadge.textContent = candPct >= 100 ? 'LIMIT REACHED' : (candPct >= (sub.softLimitPct || 80) ? 'WARNING' : 'NORMAL');
+    candBadge.className = 'status-badge ' + (candPct >= 100 ? 'danger' : (candPct >= (sub.softLimitPct || 80) ? 'draft' : 'active'));
+  }
+
+  // Attempts Card
+  const attTotalEl = document.getElementById('usageAttemptsTotal');
+  const attSubEl = document.getElementById('usageAttemptsSubmitted');
+  const attStartEl = document.getElementById('usageAttemptsStarted');
+  const attAbanEl = document.getElementById('usageAttemptsAbandoned');
+  if (attTotalEl) attTotalEl.textContent = att.total || 0;
+  if (attSubEl) attSubEl.textContent = att.submitted || 0;
+  if (attStartEl) attStartEl.textContent = att.started || 0;
+  if (attAbanEl) attAbanEl.textContent = att.abandoned || 0;
+
+  // Exams Card
+  const exUsedEl = document.getElementById('usageExamsUsed');
+  const exQuotaEl = document.getElementById('usageExamsQuota');
+  const exRemEl = document.getElementById('remainingExams');
+  const exPctEl = document.getElementById('pctExams');
+  const exBar = document.getElementById('progressExams');
+  const exBadge = document.getElementById('badgeExamsStatus');
+
+  if (exUsedEl) exUsedEl.textContent = exUsed;
+  if (exQuotaEl) exQuotaEl.textContent = exLimit === null ? 'Unlimited' : exLimit;
+  if (exRemEl) exRemEl.textContent = exLimit === null ? 'Unlimited' : Math.max(0, exLimit - exUsed);
+  if (exPctEl) exPctEl.textContent = exLimit === null ? 'N/A' : `${exPct}%`;
+  if (exBar) {
+    exBar.style.width = `${Math.min(100, exPct)}%`;
+    exBar.style.background = exPct >= 100 ? '#EF4444' : (exPct >= (sub.softLimitPct || 80) ? 'var(--color-gold)' : 'var(--color-navy)');
+  }
+  if (exBadge) {
+    exBadge.textContent = exPct >= 100 ? 'LIMIT REACHED' : (exPct >= (sub.softLimitPct || 80) ? 'WARNING' : 'NORMAL');
+    exBadge.className = 'status-badge ' + (exPct >= 100 ? 'danger' : (exPct >= (sub.softLimitPct || 80) ? 'draft' : 'active'));
+  }
+
+  // Questions Card
+  const qbTotalEl = document.getElementById('usageQuestionsTotal');
+  const qbActiveEl = document.getElementById('usageQuestionsActive');
+  const qbAllocEl = document.getElementById('usageQuestionsAllocated');
+  const qbCodeEl = document.getElementById('usageQuestionsCoding');
+  if (qbTotalEl) qbTotalEl.textContent = qb.total || 0;
+  if (qbActiveEl) qbActiveEl.textContent = qb.active || 0;
+  if (qbAllocEl) qbAllocEl.textContent = qb.allocatedToExams || 0;
+  if (qbCodeEl) qbCodeEl.textContent = qb.codingCount || 0;
+
+  // Certificates Card
+  const certIssuedEl = document.getElementById('usageCertificatesIssued');
+  const certVerEl = document.getElementById('usageCertificatesVerified');
+  if (certIssuedEl) certIssuedEl.textContent = cert.issued || 0;
+  if (certVerEl) certVerEl.textContent = cert.verified || 0;
+
+  // Code Executions Card
+  const codeTotalEl = document.getElementById('usageCodeExecTotal');
+  const codePassedEl = document.getElementById('usageCodeExecPassed');
+  const codeErrEl = document.getElementById('usageCodeExecErrors');
+  const codeTimeEl = document.getElementById('usageCodeExecTimeouts');
+  if (codeTotalEl) codeTotalEl.textContent = code.total || 0;
+  if (codePassedEl) codePassedEl.textContent = code.passed || 0;
+  if (codeErrEl) codeErrEl.textContent = (code.compilationError || 0) + (code.runtimeError || 0);
+  if (codeTimeEl) codeTimeEl.textContent = code.timeout || 0;
+
+  // Storage Card
+  const stUsedEl = document.getElementById('usageStorageUsed');
+  const stQuotaEl = document.getElementById('usageStorageQuota');
+  const stObjEl = document.getElementById('usageStorageObjects');
+  const stPctEl = document.getElementById('pctStorage');
+  const stBar = document.getElementById('progressStorage');
+  const stBadge = document.getElementById('badgeStorageStatus');
+
+  const stMb = storage.totalMegabytes || 0;
+  const stLimitGb = storage.limitGigabytes;
+  const stPct = storage.percentage || 0;
+
+  if (stUsedEl) stUsedEl.textContent = `${stMb} MB`;
+  if (stQuotaEl) stQuotaEl.textContent = stLimitGb ? `${stLimitGb} GB` : 'Unlimited';
+  if (stObjEl) stObjEl.textContent = storage.totalObjects || 0;
+  if (stPctEl) stPctEl.textContent = stLimitGb ? `${stPct}%` : 'N/A';
+  if (stBar) {
+    stBar.style.width = `${Math.min(100, stPct)}%`;
+    stBar.style.background = stPct >= 100 ? '#EF4444' : (stPct >= (sub.softLimitPct || 80) ? 'var(--color-gold)' : 'var(--color-navy)');
+  }
+  if (stBadge) {
+    stBadge.textContent = stPct >= 100 ? 'LIMIT REACHED' : (stPct >= (sub.softLimitPct || 80) ? 'WARNING' : 'NORMAL');
+    stBadge.className = 'status-badge ' + (stPct >= 100 ? 'danger' : (stPct >= (sub.softLimitPct || 80) ? 'draft' : 'active'));
   }
 
   // 3. Alert Banner
@@ -4117,33 +4302,62 @@ function renderSubscriptionUI(data) {
   const alertMsg = document.getElementById('quotaAlertMsg');
   const alertIcon = document.getElementById('quotaAlertIcon');
 
+  const isExceeded = candPct >= 100 || exPct >= 100 || stPct >= 100;
+  const isWarning = candPct >= (sub.softLimitPct || 80) || exPct >= (sub.softLimitPct || 80) || stPct >= (sub.softLimitPct || 80);
+
   if (alertBanner) {
-    if (examsRes.isExceeded || candRes.isExceeded) {
+    if (isExceeded) {
       alertBanner.style.display = 'flex';
       alertBanner.style.background = '#FEE2E2';
       alertBanner.style.border = '1px solid #EF4444';
       alertBanner.style.color = '#991B1B';
       if (alertIcon) alertIcon.textContent = '🚫';
       if (alertTitle) alertTitle.textContent = 'Plan Limit Exceeded';
-      const exceededNames = [];
-      if (examsRes.isExceeded) exceededNames.push('monthly exams');
-      if (candRes.isExceeded) exceededNames.push('candidates');
-      if (alertMsg) alertMsg.textContent = `You have reached the maximum quota for ${exceededNames.join(' and ')}. Please upgrade to restore full functionality.`;
-    } else if (examsRes.isWarning || candRes.isWarning) {
+      if (alertMsg) alertMsg.textContent = 'One or more resource quotas have reached 100% capacity. Please upgrade to restore full publishing and registration functionality.';
+    } else if (isWarning) {
       alertBanner.style.display = 'flex';
       alertBanner.style.background = '#FEF3C7';
       alertBanner.style.border = '1px solid #F59E0B';
       alertBanner.style.color = '#92400E';
       if (alertIcon) alertIcon.textContent = '⚠️';
-      if (alertTitle) alertTitle.textContent = 'Approaching Quota Limit';
-      const warningNames = [];
-      if (examsRes.isWarning) warningNames.push(`monthly exams (${examsRes.percentage}%)`);
-      if (candRes.isWarning) warningNames.push(`candidates (${candRes.percentage}%)`);
-      if (alertMsg) alertMsg.textContent = `Your institution has reached the warning threshold for ${warningNames.join(', ')}.`;
+      if (alertTitle) alertTitle.textContent = 'Approaching Plan Limit';
+      if (alertMsg) alertMsg.textContent = `Your institution has reached the warning threshold (${sub.softLimitPct || 80}% capacity). Review your quotas below.`;
     } else {
       alertBanner.style.display = 'none';
     }
   }
+
+  // 4. Detailed Usage Table Population
+  const detailedTbody = document.getElementById('detailedUsageTableBody');
+  if (detailedTbody) {
+    const tableItems = [
+      { name: 'Candidates', used: candUsed, limit: candLimit === null ? 'Unlimited' : candLimit, rem: candLimit === null ? 'Unlimited' : Math.max(0, candLimit - candUsed), pct: candLimit === null ? 'N/A' : `${candPct}%`, status: candPct >= 100 ? 'EXCEEDED' : candPct >= (sub.softLimitPct || 80) ? 'WARNING' : 'NORMAL' },
+      { name: 'Monthly Published Exams', used: exUsed, limit: exLimit === null ? 'Unlimited' : exLimit, rem: exLimit === null ? 'Unlimited' : Math.max(0, exLimit - exUsed), pct: exLimit === null ? 'N/A' : `${exPct}%`, status: exPct >= 100 ? 'EXCEEDED' : exPct >= (sub.softLimitPct || 80) ? 'WARNING' : 'NORMAL' },
+      { name: 'Assessment Attempts', used: att.total || 0, limit: 'Unlimited', rem: 'Unlimited', pct: 'N/A', status: 'NORMAL' },
+      { name: 'Questions (Question Bank)', used: qb.total || 0, limit: 'Unlimited', rem: 'Unlimited', pct: 'N/A', status: 'NORMAL' },
+      { name: 'Digital Certificates', used: cert.issued || 0, limit: 'Unlimited', rem: 'Unlimited', pct: 'N/A', status: 'NORMAL' },
+      { name: 'Code Executions', used: code.total || 0, limit: 'Unlimited', rem: 'Unlimited', pct: 'N/A', status: 'NORMAL' },
+      { name: 'Storage Footprint', used: `${stMb} MB`, limit: stLimitGb ? `${stLimitGb} GB` : 'Unlimited', rem: stLimitGb ? `${Math.max(0, (stLimitGb * 1024 - stMb)).toFixed(1)} MB` : 'Unlimited', pct: stLimitGb ? `${stPct}%` : 'N/A', status: stPct >= 100 ? 'EXCEEDED' : stPct >= (sub.softLimitPct || 80) ? 'WARNING' : 'NORMAL' }
+    ];
+
+    detailedTbody.innerHTML = tableItems.map((item) => {
+      const badgeCls = item.status === 'EXCEEDED' ? 'danger' : (item.status === 'WARNING' ? 'draft' : 'active');
+      return `
+        <tr style="border-bottom:1px solid #F1F5F9">
+          <td style="padding:12px;font-weight:600;color:var(--color-navy)">${escapeHtml(item.name)}</td>
+          <td style="padding:12px">${item.used}</td>
+          <td style="padding:12px">${item.limit}</td>
+          <td style="padding:12px">${item.rem}</td>
+          <td style="padding:12px">${item.pct}</td>
+          <td style="padding:12px"><span class="status-badge ${badgeCls}">${item.status}</span></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // 5. Load Trends Chart & Event History
+  loadUsageTrends(document.getElementById('usageTrendsResource')?.value || '', document.getElementById('usageTrendsTimeframe')?.value || '30d');
+  loadUsageHistory();
 
   // 4. Update Dashboard Subscription Bar if elements exist
   const dashPlan = document.getElementById('dashSubPlanName');
@@ -4248,6 +4462,19 @@ function closeUpgradeModal() {
 document.addEventListener('DOMContentLoaded', () => {
   const refreshBtn = document.getElementById('refreshSubscriptionBtn');
   if (refreshBtn) refreshBtn.addEventListener('click', loadSubscription);
+
+  const trendResource = document.getElementById('usageTrendsResource');
+  const trendTimeframe = document.getElementById('usageTrendsTimeframe');
+  if (trendResource) {
+    trendResource.addEventListener('change', () => {
+      loadUsageTrends(trendResource.value, trendTimeframe?.value || '30d');
+    });
+  }
+  if (trendTimeframe) {
+    trendTimeframe.addEventListener('change', () => {
+      loadUsageTrends(trendResource?.value || '', trendTimeframe.value);
+    });
+  }
 
   const openModalBtn = document.getElementById('openUpgradeModalBtn');
   if (openModalBtn) openModalBtn.addEventListener('click', openUpgradeModal);

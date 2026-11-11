@@ -386,6 +386,24 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
     }
 
     const finalRow = targetDb.prepare('SELECT * FROM attempts WHERE id = ?').get(att.id);
+
+    // Day 22 Metering: Record certificate issued event
+    if (finalRow && finalRow.certificate_id) {
+      try {
+        const { recordUsageEvent } = require('./subscription/metering.service');
+        recordUsageEvent({
+          organizationId: att.organization_id || 1,
+          resourceKey: 'certificates',
+          eventType: 'INCREMENT',
+          quantity: 1,
+          referenceType: 'certificate',
+          referenceId: finalRow.certificate_id,
+          idempotencyKey: `certificate_issued_${att.id}_${finalRow.certificate_id}`,
+          metadata: { attemptId: att.id, claimCode: finalRow.claim_code, score, percentage }
+        });
+      } catch (err) {}
+    }
+
     const summary = resultSummary(finalRow, student ? student.name : '');
     summary.detail = detail;
     metrics.recordFinalization(Date.now() - finalizeStart);

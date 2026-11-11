@@ -947,6 +947,94 @@ function runMigrations(db) {
           }
         }
       }
+    },
+    {
+      version: '016_usage_metering_and_aggregation',
+      up: (d) => {
+        // 1. Daily usage aggregation table
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_usage_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            resource_key TEXT NOT NULL,
+            usage_date TEXT NOT NULL,
+            consumed INTEGER NOT NULL DEFAULT 0,
+            released INTEGER NOT NULL DEFAULT 0,
+            net_usage INTEGER NOT NULL DEFAULT 0,
+            event_count INTEGER NOT NULL DEFAULT 0,
+            metadata_json TEXT DEFAULT '{}',
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CONSTRAINT uq_daily_org_resource_date UNIQUE (organization_id, resource_key, usage_date)
+          );
+          CREATE INDEX IF NOT EXISTS idx_daily_usage_lookup ON organization_usage_daily(organization_id, usage_date);
+          CREATE INDEX IF NOT EXISTS idx_daily_usage_resource ON organization_usage_daily(organization_id, resource_key, usage_date);
+          CREATE INDEX IF NOT EXISTS idx_daily_usage_date ON organization_usage_daily(usage_date);
+        `);
+
+        // 2. Organization storage objects table
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_storage_objects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            storage_key TEXT NOT NULL UNIQUE,
+            category TEXT NOT NULL DEFAULT 'branding',
+            file_name TEXT,
+            mime_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'local',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_storage_objects_org ON organization_storage_objects(organization_id);
+          CREATE INDEX IF NOT EXISTS idx_storage_objects_category ON organization_storage_objects(organization_id, category);
+        `);
+
+        // 3. Reconciliation audit and tracking jobs table
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS reconciliation_jobs (
+            id TEXT PRIMARY KEY,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED')),
+            mode TEXT NOT NULL DEFAULT 'DRY_RUN' CHECK(mode IN ('DRY_RUN', 'APPLY_CORRECTIONS')),
+            discrepancies_count INTEGER NOT NULL DEFAULT 0,
+            corrections_count INTEGER NOT NULL DEFAULT 0,
+            report_json TEXT DEFAULT '{}',
+            initiated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            started_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_reconcile_org ON reconciliation_jobs(organization_id, created_at);
+        `);
+
+        // 4. Update check constraint on organization_usage_events to support INCREMENT, DECREMENT, SNAPSHOT
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS organization_usage_events_v2 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            subscription_id INTEGER REFERENCES organization_subscriptions(id) ON DELETE SET NULL,
+            resource_key TEXT NOT NULL,
+            event_type TEXT NOT NULL CHECK(event_type IN ('CONSUMED', 'RESERVED', 'RELEASED', 'ADJUSTED', 'REVERSED', 'INCREMENT', 'DECREMENT', 'SNAPSHOT')),
+            quantity INTEGER NOT NULL,
+            reference_type TEXT,
+            reference_id TEXT,
+            idempotency_key TEXT UNIQUE,
+            metadata_json TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          INSERT INTO organization_usage_events_v2 (
+            id, organization_id, subscription_id, resource_key, event_type,
+            quantity, reference_type, reference_id, idempotency_key, metadata_json, created_at
+          ) SELECT id, organization_id, subscription_id, resource_key, event_type,
+                   quantity, reference_type, reference_id, idempotency_key, metadata_json, created_at
+            FROM organization_usage_events;
+          DROP TABLE organization_usage_events;
+          ALTER TABLE organization_usage_events_v2 RENAME TO organization_usage_events;
+          CREATE INDEX IF NOT EXISTS idx_usage_events_org ON organization_usage_events(organization_id, resource_key);
+          CREATE INDEX IF NOT EXISTS idx_usage_events_ref ON organization_usage_events(reference_type, reference_id);
+          CREATE INDEX IF NOT EXISTS idx_usage_events_idempotency ON organization_usage_events(idempotency_key);
+        `);
+      }
     }
   ];
 

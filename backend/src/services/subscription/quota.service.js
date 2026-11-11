@@ -445,6 +445,7 @@ function getQuotaSummary(organizationId) {
 }
 
 module.exports = {
+  resolveResourcePeriod,
   checkQuota,
   consumeQuota,
   reserveQuota,

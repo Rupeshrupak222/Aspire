@@ -79,6 +79,7 @@ function createApp() {
   app.get('/api/health/db', healthHandler);
   app.use('/api/auth', authRoutes);
   app.use('/api/organization', organizationRoutes);
+  app.use('/api/organizations', organizationRoutes);
   app.use('/api/admin', adminRoutes);
 
   // Storage asset serving endpoint for local/mock uploads

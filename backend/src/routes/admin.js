@@ -8,6 +8,13 @@ const { requireAuth, requirePermission, requireRole } = require('../middleware/a
 const validate = require('../middleware/validate');
 const { NotFoundError, ValidationError, AuthorizationError } = require('../errors/app-error');
 const { idParamSchema } = require('../validation/common.schemas');
+const meteringService = require('../services/subscription/metering.service');
+const reconciliationService = require('../services/subscription/reconciliation.service');
+const {
+  usageTrendsQuerySchema,
+  reconcileRequestSchema
+} = require('../validation/metering.schemas');
+
 const {
   createQuestionSchema,
   updateQuestionSchema,
@@ -1504,4 +1511,119 @@ router.get(
   }
 );
 
+
+// ============================================================================
+// DAY 22: SUPER ADMIN USAGE METERING & RECONCILIATION ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/admin/usage/overview
+ * Platform-wide usage summary across organizations.
+ */
+router.get('/usage/overview', requireRole(ROLES.SUPER_ADMIN), (req, res, next) => {
+  try {
+    const orgs = db.prepare('SELECT id, name, slug, status FROM organizations WHERE status != \'ARCHIVED\'').all();
+    const summaries = orgs.map((org) => {
+      try {
+        return meteringService.getCurrentUsageSnapshot(org.id);
+      } catch {
+        return { organization: org, error: 'Failed to load usage snapshot' };
+      }
+    });
+
+    const totalCandidates = db.prepare('SELECT COUNT(DISTINCT id) as c FROM students').get()?.c || 0;
+    const totalAttempts = db.prepare('SELECT COUNT(*) as c FROM attempts').get()?.c || 0;
+    const totalExams = db.prepare('SELECT COUNT(*) as c FROM exams').get()?.c || 0;
+    const totalQuestions = db.prepare('SELECT COUNT(*) as c FROM questions').get()?.c || 0;
+    const totalStorageBytes = db.prepare('SELECT COALESCE(SUM(size_bytes), 0) as b FROM organization_storage_objects').get()?.b || 0;
+
+    res.json({
+      success: true,
+      data: {
+        platformTotals: {
+          candidates: totalCandidates,
+          attempts: totalAttempts,
+          exams: totalExams,
+          questions: totalQuestions,
+          storageBytes: totalStorageBytes,
+          storageMegabytes: Number((totalStorageBytes / (1024 * 1024)).toFixed(2))
+        },
+        organizationSnapshots: summaries
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/usage/organizations/:organizationId
+ * Real-time usage snapshot for a specific organization across all 7 resources.
+ */
+router.get('/usage/organizations/:organizationId', requireRole(ROLES.SUPER_ADMIN), (req, res, next) => {
+  try {
+    const orgId = parseInt(req.params.organizationId, 10);
+    const snapshot = meteringService.getCurrentUsageSnapshot(orgId);
+    res.json({ success: true, data: snapshot });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/usage/trends
+ * Usage consumption trends across all or filtered orgs.
+ */
+router.get('/usage/trends', requireRole(ROLES.SUPER_ADMIN), validate({ query: usageTrendsQuerySchema }), (req, res, next) => {
+  try {
+    const orgId = req.query.organization_id ? parseInt(req.query.organization_id, 10) : null;
+    if (!orgId) {
+      return res.status(400).json({ success: false, error: { message: 'organization_id query parameter is required for trend analysis' } });
+    }
+    const trends = meteringService.getUsageTrends({
+      organizationId: orgId,
+      resourceKey: req.query.resource_key || null,
+      startDate: req.query.start_date || null,
+      endDate: req.query.end_date || null,
+      interval: req.query.interval || 'day'
+    });
+    res.json({ success: true, data: trends });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/usage/reconcile
+ * Trigger platform-wide or organization-scoped reconciliation (DRY_RUN or APPLY_CORRECTIONS).
+ */
+router.post('/usage/reconcile', requireRole(ROLES.SUPER_ADMIN), validate({ body: reconcileRequestSchema }), (req, res, next) => {
+  try {
+    const { organizationId, mode } = req.body;
+    const result = reconciliationService.startReconciliationJob({
+      organizationId: organizationId || null,
+      mode: mode || 'DRY_RUN',
+      actorId: req.user.id,
+      req
+    });
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/usage/reconciliation/:jobId
+ * Retrieve reconciliation report by job ID.
+ */
+router.get('/usage/reconciliation/:jobId', requireRole(ROLES.SUPER_ADMIN), (req, res, next) => {
+  try {
+    const job = reconciliationService.getReconciliationJob(req.params.jobId);
+    res.json({ success: true, data: job });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
+

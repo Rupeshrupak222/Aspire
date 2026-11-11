@@ -37,6 +37,11 @@ const subscriptionService = require('../services/subscription/subscription.servi
 const quotaService = require('../services/subscription/quota.service');
 const planService = require('../services/subscription/plan.service');
 const usageService = require('../services/subscription/usage.service');
+const meteringService = require('../services/subscription/metering.service');
+const {
+  usageTrendsQuerySchema,
+  usageHistoryQuerySchema
+} = require('../validation/metering.schemas');
 const { requireFeature } = require('../middleware/quota-enforcement');
 
 // Memory storage for file uploads (max 2MB)
@@ -146,9 +151,10 @@ router.get('/plan/features', requirePermission(PERMISSIONS.ORGANIZATIONS_READ, P
 
 /**
  * GET /api/organization/usage
- * Get tenant-scoped usage analytics and quota summaries.
+ * GET /api/organization/usage/overview
+ * Get comprehensive real-time usage snapshot across all 7 resource categories.
  */
-router.get('/usage', requirePermission(PERMISSIONS.ANALYTICS_READ), (req, res, next) => {
+function handleUsageOverview(req, res, next) {
   const orgId = req.user.organization_id;
   if (!orgId) {
     return next(new AuthorizationError('User account is not assigned to an organization'));
@@ -156,13 +162,101 @@ router.get('/usage', requirePermission(PERMISSIONS.ANALYTICS_READ), (req, res, n
 
   const rawUsage = orgService.getOrganizationUsage(orgId);
   const quotaSummary = quotaService.getQuotaSummary(orgId);
+  const snapshot = meteringService.getCurrentUsageSnapshot(orgId);
 
   res.json({
     success: true,
     data: {
       ...rawUsage,
-      ...quotaSummary
+      ...quotaSummary,
+      ...snapshot
     }
+  });
+}
+
+router.get('/usage', requirePermission(PERMISSIONS.ANALYTICS_READ), handleUsageOverview);
+router.get('/usage/overview', requirePermission(PERMISSIONS.ANALYTICS_READ), handleUsageOverview);
+
+/**
+ * GET /api/organization/usage/resources
+ * Detailed resource metrics and limits for all 7 resources.
+ */
+router.get('/usage/resources', requirePermission(PERMISSIONS.ANALYTICS_READ), (req, res, next) => {
+  const orgId = req.user.organization_id;
+  if (!orgId) {
+    return next(new AuthorizationError('User account is not assigned to an organization'));
+  }
+
+  const snapshot = meteringService.getCurrentUsageSnapshot(orgId);
+  res.json({
+    success: true,
+    data: snapshot.resources
+  });
+});
+
+/**
+ * GET /api/organization/usage/trends
+ * Time series usage trends suitable for Chart.js visualization.
+ */
+router.get('/usage/trends', requirePermission(PERMISSIONS.ANALYTICS_READ), validate({ query: usageTrendsQuerySchema }), (req, res, next) => {
+  const orgId = req.user.organization_id;
+  if (!orgId) {
+    return next(new AuthorizationError('User account is not assigned to an organization'));
+  }
+
+  const trends = meteringService.getUsageTrends({
+    organizationId: orgId,
+    resourceKey: req.query.resource_key || null,
+    startDate: req.query.start_date || null,
+    endDate: req.query.end_date || null,
+    interval: req.query.interval || 'daily'
+  });
+
+  res.json({
+    success: true,
+    data: trends
+  });
+});
+
+/**
+ * GET /api/organization/usage/history
+ * Paginated usage audit event ledger.
+ */
+router.get('/usage/history', requirePermission(PERMISSIONS.ANALYTICS_READ), validate({ query: usageHistoryQuerySchema }), (req, res, next) => {
+  const orgId = req.user.organization_id;
+  if (!orgId) {
+    return next(new AuthorizationError('User account is not assigned to an organization'));
+  }
+
+  const history = meteringService.getUsageHistory({
+    organizationId: orgId,
+    resourceKey: req.query.resource_key || null,
+    page: req.query.page,
+    limit: req.query.limit,
+    startDate: req.query.start_date || null,
+    endDate: req.query.end_date || null
+  });
+
+  res.json({
+    success: true,
+    data: history
+  });
+});
+
+/**
+ * GET /api/organization/usage/storage
+ * Total storage footprint, object categories, and recent uploads.
+ */
+router.get('/usage/storage', requirePermission(PERMISSIONS.ANALYTICS_READ), (req, res, next) => {
+  const orgId = req.user.organization_id;
+  if (!orgId) {
+    return next(new AuthorizationError('User account is not assigned to an organization'));
+  }
+
+  const footprint = meteringService.getStorageFootprint(orgId);
+  res.json({
+    success: true,
+    data: footprint
   });
 });
 
