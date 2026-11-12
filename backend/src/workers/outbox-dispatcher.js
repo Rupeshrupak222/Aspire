@@ -6,8 +6,10 @@
 require('dotenv').config();
 const { db } = require('../db');
 const { codeExecutionQueue } = require('../queues/code-execution.queue');
+const { notificationQueue } = require('../queues/notification.queue');
 const { testRedisConnection } = require('../config/redis');
 const { processCodeJob } = require('./code-execution.processor');
+const { deliverNotification } = require('../services/notifications/notification-delivery.service');
 const { OUTBOX_STATUS } = require('../services/code-execution/constants');
 const logger = require('../utils/logger');
 
@@ -44,24 +46,34 @@ async function dispatchImmediate(submissionId) {
   }
 
   try {
-    // Attempt BullMQ enqueue
-    const { jobId } = await codeExecutionQueue.enqueueSubmissionJob(payload);
-
-    db.transaction(() => {
+    let jobId = null;
+    if (event.event_type === 'NOTIFICATION_EMAIL') {
+      const res = await notificationQueue.enqueueDeliveryJob(payload);
+      jobId = res.jobId;
       db.prepare(`
         UPDATE outbox_events
         SET status = ?, processed_at = datetime('now')
         WHERE id = ?
       `).run(OUTBOX_STATUS.DISPATCHED, event.id);
+    } else {
+      const res = await codeExecutionQueue.enqueueSubmissionJob(payload);
+      jobId = res.jobId;
+      db.transaction(() => {
+        db.prepare(`
+          UPDATE outbox_events
+          SET status = ?, processed_at = datetime('now')
+          WHERE id = ?
+        `).run(OUTBOX_STATUS.DISPATCHED, event.id);
 
-      db.prepare(`
-        UPDATE coding_submissions
-        SET job_id = ?
-        WHERE id = ?
-      `).run(jobId, submissionId);
-    })();
+        db.prepare(`
+          UPDATE coding_submissions
+          SET job_id = ?
+          WHERE id = ?
+        `).run(jobId, submissionId);
+      })();
+    }
 
-    logger.info({ submissionId, eventId: event.id, jobId }, 'Outbox event dispatched immediately to BullMQ');
+    logger.info({ aggregateId: submissionId, eventId: event.id, jobId, type: event.event_type }, 'Outbox event dispatched immediately');
     return { dispatched: true, jobId };
   } catch (err) {
     // Redis unavailable or queue error: Record backoff in outbox
@@ -86,9 +98,13 @@ async function dispatchImmediate(submissionId) {
     }, 'Immediate outbox dispatch failed; event preserved in SQLite outbox for retry');
 
     // Offline / fallback processing: If fallback mode enabled or if queue is mocked, execute directly
-    if (process.env.CODE_EXECUTION_FALLBACK === 'true' || codeExecutionQueue.mockMode) {
+    if (process.env.CODE_EXECUTION_FALLBACK === 'true' || codeExecutionQueue.mockMode || event.event_type === 'NOTIFICATION_EMAIL') {
       try {
-        await processCodeJob(payload);
+        if (event.event_type === 'NOTIFICATION_EMAIL') {
+          await deliverNotification(payload.deliveryId);
+        } else {
+          await processCodeJob(payload);
+        }
         db.prepare(`
           UPDATE outbox_events
           SET status = ?, processed_at = datetime('now')
@@ -145,9 +161,13 @@ async function dispatchPendingEvents(limit = 50) {
 
     if (!redisAvailable) {
       // If Redis is not available, check if fallback direct processing is requested
-      if (process.env.CODE_EXECUTION_FALLBACK === 'true') {
+      if (process.env.CODE_EXECUTION_FALLBACK === 'true' || event.event_type === 'NOTIFICATION_EMAIL') {
         try {
-          await processCodeJob(payload);
+          if (event.event_type === 'NOTIFICATION_EMAIL') {
+            await deliverNotification(payload.deliveryId);
+          } else {
+            await processCodeJob(payload);
+          }
           db.prepare(`
             UPDATE outbox_events
             SET status = ?, processed_at = datetime('now')
@@ -176,21 +196,30 @@ async function dispatchPendingEvents(limit = 50) {
     }
 
     try {
-      const { jobId } = await codeExecutionQueue.enqueueSubmissionJob(payload);
-
-      db.transaction(() => {
+      if (event.event_type === 'NOTIFICATION_EMAIL') {
+        await notificationQueue.enqueueDeliveryJob(payload);
         db.prepare(`
           UPDATE outbox_events
           SET status = ?, processed_at = datetime('now')
           WHERE id = ?
         `).run(OUTBOX_STATUS.DISPATCHED, event.id);
+      } else {
+        const { jobId } = await codeExecutionQueue.enqueueSubmissionJob(payload);
 
-        db.prepare(`
-          UPDATE coding_submissions
-          SET job_id = ?
-          WHERE id = ?
-        `).run(jobId, event.aggregate_id);
-      })();
+        db.transaction(() => {
+          db.prepare(`
+            UPDATE outbox_events
+            SET status = ?, processed_at = datetime('now')
+            WHERE id = ?
+          `).run(OUTBOX_STATUS.DISPATCHED, event.id);
+
+          db.prepare(`
+            UPDATE coding_submissions
+            SET job_id = ?
+            WHERE id = ?
+          `).run(jobId, event.aggregate_id);
+        })();
+      }
 
       dispatchedCount++;
     } catch (dispatchErr) {

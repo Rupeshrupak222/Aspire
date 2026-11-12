@@ -11,6 +11,7 @@ const publicRoutes = require('./routes/public');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const organizationRoutes = require('./routes/organization');
+const webhookRoutes = require('./routes/webhooks');
 const { storageService } = require('./services/storage.service');
 const { executionService } = require('./services/code-execution/execution.service');
 
@@ -81,6 +82,7 @@ function createApp() {
   app.use('/api/organization', organizationRoutes);
   app.use('/api/organizations', organizationRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/webhooks', webhookRoutes);
 
   // Storage asset serving endpoint for local/mock uploads
   app.get('/api/storage/assets/*', async (req, res, next) => {

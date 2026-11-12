@@ -1035,6 +1035,102 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_usage_events_idempotency ON organization_usage_events(idempotency_key);
         `);
       }
+    },
+    {
+      version: '017_notification_system',
+      up: (d) => {
+        // 1. Notification events (normalized domain event store)
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS notification_events (
+            id TEXT PRIMARY KEY,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL CHECK(event_type IN ('REGISTRATION_CONFIRMED', 'EXAM_INVITATION', 'EXAM_REMINDER', 'EXAM_COMPLETED', 'RESULT_AVAILABLE', 'CERTIFICATE_AVAILABLE')),
+            recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            recipient_email TEXT NOT NULL,
+            template_key TEXT NOT NULL,
+            reference_type TEXT,
+            reference_id TEXT,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            idempotency_key TEXT UNIQUE,
+            status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'PROCESSING', 'DISPATCHED', 'FAILED', 'CANCELLED')),
+            scheduled_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_notif_events_org ON notification_events(organization_id, event_type);
+          CREATE INDEX IF NOT EXISTS idx_notif_events_idempotency ON notification_events(idempotency_key);
+          CREATE INDEX IF NOT EXISTS idx_notif_events_status ON notification_events(status, scheduled_at);
+        `);
+
+        // 2. Notification deliveries (individual channel attempts and statuses)
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS notification_deliveries (
+            id TEXT PRIMARY KEY,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+            notification_event_id TEXT REFERENCES notification_events(id) ON DELETE SET NULL,
+            recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            recipient_email TEXT NOT NULL,
+            channel TEXT NOT NULL DEFAULT 'EMAIL' CHECK(channel IN ('EMAIL')),
+            provider TEXT NOT NULL DEFAULT 'resend',
+            provider_message_id TEXT,
+            template_key TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING', 'QUEUED', 'PROCESSING', 'SENT', 'DELIVERED', 'BOUNCED', 'COMPLAINED', 'FAILED', 'CANCELLED')),
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_error_code TEXT,
+            last_error_message TEXT,
+            scheduled_at TEXT,
+            sent_at TEXT,
+            delivered_at TEXT,
+            failed_at TEXT,
+            metadata_json TEXT DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_notif_deliv_org ON notification_deliveries(organization_id, status);
+          CREATE INDEX IF NOT EXISTS idx_notif_deliv_email ON notification_deliveries(recipient_email);
+          CREATE INDEX IF NOT EXISTS idx_notif_deliv_prov_msg ON notification_deliveries(provider_message_id);
+          CREATE INDEX IF NOT EXISTS idx_notif_deliv_status ON notification_deliveries(status);
+          CREATE INDEX IF NOT EXISTS idx_notif_deliv_event ON notification_deliveries(notification_event_id);
+        `);
+
+        // 3. Notification preferences (tenant and user notification configurations)
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS notification_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            email_enabled INTEGER NOT NULL DEFAULT 1,
+            registration_updates INTEGER NOT NULL DEFAULT 1,
+            exam_invitations INTEGER NOT NULL DEFAULT 1,
+            exam_reminders INTEGER NOT NULL DEFAULT 1,
+            result_updates INTEGER NOT NULL DEFAULT 1,
+            certificate_updates INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(organization_id, user_id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_notif_pref_user ON notification_preferences(organization_id, user_id);
+        `);
+
+        // 4. Candidate exam invitations
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS exam_candidate_invitations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            exam_id INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+            student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+            email TEXT NOT NULL,
+            name TEXT,
+            invitation_token TEXT NOT NULL UNIQUE,
+            status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT', 'ACCEPTED', 'EXPIRED', 'CANCELLED')),
+            invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            scheduled_reminder_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_exam_cand_inv_exam ON exam_candidate_invitations(organization_id, exam_id);
+          CREATE INDEX IF NOT EXISTS idx_exam_cand_inv_token ON exam_candidate_invitations(invitation_token);
+        `);
+      }
     }
   ];
 

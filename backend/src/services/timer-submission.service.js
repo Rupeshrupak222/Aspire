@@ -404,6 +404,62 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
       } catch (err) {}
     }
 
+    // Day 23 Notifications: Transactional Email Delivery (Exam Completed, Results, Certificate)
+    if (student && student.email) {
+      try {
+        const notificationService = require('./notifications/notification.service');
+        const orgId = att.organization_id || 1;
+
+        let examTitle = 'Scholarship Assessment';
+        if (att.exam_id) {
+          const ex = targetDb.prepare('SELECT name FROM exams WHERE id = ?').get(att.exam_id);
+          if (ex && ex.name) examTitle = ex.name;
+        }
+
+        // 1. Exam Completed Notification
+        notificationService.sendExamCompleted({
+          organizationId: orgId,
+          attemptId: att.id,
+          studentId: student.id,
+          email: student.email,
+          name: student.name || 'Candidate',
+          examTitle,
+          submittedAt: finalRow.submitted_at
+        });
+
+        // 2. Result Available Notification
+        notificationService.sendResultAvailable({
+          organizationId: orgId,
+          attemptId: att.id,
+          studentId: student.id,
+          email: student.email,
+          name: student.name || 'Candidate',
+          examTitle,
+          score: finalRow.score,
+          totalMarks: finalRow.total_marks,
+          percentage: finalRow.percentage,
+          scholarshipPercentage: finalRow.scholarship_pct,
+          scholarshipTier: null
+        });
+
+        // 3. Certificate Available Notification (only when certificate is issued)
+        if (finalRow.certificate_id) {
+          notificationService.sendCertificateAvailable({
+            organizationId: orgId,
+            certificateId: finalRow.certificate_id,
+            attemptId: att.id,
+            studentId: student.id,
+            email: student.email,
+            name: student.name || 'Candidate',
+            examTitle,
+            scholarshipPercentage: finalRow.scholarship_pct
+          });
+        }
+      } catch (notifErr) {
+        logger.warn({ attemptId: att.id, err: notifErr.message }, 'Failed queuing candidate post-submission notifications');
+      }
+    }
+
     const summary = resultSummary(finalRow, student ? student.name : '');
     summary.detail = detail;
     metrics.recordFinalization(Date.now() - finalizeStart);

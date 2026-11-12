@@ -178,9 +178,24 @@ router.get('/config/public', (req, res) => {
 router.post('/register', registerLimiter, validate(registerSchema), (req, res, next) => {
   const { name, phone: normPhone, email, college, city, grad_year, track, campaign_code, exam_code, exam_id } = req.body;
 
-  // Resolve target exam (by exam_code, exam_id, or default active published exam)
+  // Day 23: Resolve invitation token if provided
+  let invitation = null;
+  const invToken = req.body.invitation_token || req.body.invitation;
+  if (invToken) {
+    try {
+      invitation = db.prepare('SELECT * FROM exam_candidate_invitations WHERE invitation_token = ?').get(invToken);
+    } catch {}
+  }
+
+  // Resolve target exam (by invitation, exam_code, exam_id, or default active published exam)
   let targetExam = null;
-  if (exam_code) {
+  if (invitation && invitation.exam_id) {
+    try {
+      targetExam = examService.getExamById(invitation.exam_id);
+    } catch {}
+  }
+
+  if (!targetExam && exam_code) {
     targetExam = examService.getExamByCode(exam_code);
     if (!targetExam) {
       return res.status(404).json({
@@ -361,6 +376,31 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
           metadata: { phone: normPhone, email, examId: targetExamId }
         });
       } catch (err) {}
+
+      // Day 23: Update candidate invitation status if matched
+      if (invitation) {
+        try {
+          db.prepare(`
+            UPDATE exam_candidate_invitations
+            SET status = 'ACCEPTED', student_id = ?, updated_at = datetime('now')
+            WHERE id = ?
+          `).run(studentId, invitation.id);
+        } catch (invErr) {}
+      }
+
+      // Day 23 Notifications: Transactional Registration Confirmation Email
+      if (email) {
+        try {
+          const notificationService = require('../services/notifications/notification.service');
+          notificationService.sendRegistrationConfirmation({
+            organizationId: assignedOrgId,
+            studentId,
+            email,
+            name,
+            college: college || null
+          });
+        } catch (notifErr) {}
+      }
     }
 
     const token = randHex(24);

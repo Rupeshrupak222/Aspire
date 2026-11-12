@@ -73,6 +73,9 @@ const {
   adjustUsageSchema,
   planParamSchema
 } = require('../validation/subscription.schemas');
+const notificationDeliveryService = require('../services/notifications/notification-delivery.service');
+const { getProviderStatus } = require('../services/notifications/email.service');
+const { listNotificationsQuerySchema, deliveryIdParamSchema } = require('../validation/notification.schemas');
 const metrics = require('../utils/metrics');
 const {
   createExamSchema,
@@ -1624,6 +1627,110 @@ router.get('/usage/reconciliation/:jobId', requireRole(ROLES.SUPER_ADMIN), (req,
     next(err);
   }
 });
+
+// ============================================================================
+// DAY 23: SUPER ADMIN TRANSACTIONAL NOTIFICATION & EMAIL SYSTEM ROUTES
+// ============================================================================
+
+/**
+ * GET /api/admin/notifications/overview
+ * Platform-wide delivery KPIs, status breakdown, and email provider health.
+ */
+router.get('/notifications/overview', requireRole(ROLES.SUPER_ADMIN), (req, res, next) => {
+  try {
+    const metrics = notificationDeliveryService.getNotificationMetrics(null);
+    const provider = getProviderStatus();
+    res.json({
+      success: true,
+      data: {
+        metrics,
+        provider
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/notifications/deliveries
+ * Platform-wide delivery log across all tenants, with filtering and pagination.
+ */
+router.get(
+  '/notifications/deliveries',
+  requireRole(ROLES.SUPER_ADMIN),
+  validate({ query: listNotificationsQuerySchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.query.organization_id ? parseInt(req.query.organization_id, 10) : null;
+      const result = notificationDeliveryService.listDeliveries({
+        organizationId: orgId,
+        page: req.query.page,
+        limit: req.query.limit,
+        eventType: req.query.event_type,
+        status: req.query.status,
+        search: req.query.search,
+        startDate: req.query.start_date,
+        endDate: req.query.end_date
+      });
+      res.json({
+        success: true,
+        data: result.deliveries,
+        pagination: result.pagination
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/admin/notifications/organizations/:organizationId
+ * Real-time notification health, metrics, and recent deliveries for a specific tenant.
+ */
+router.get('/notifications/organizations/:organizationId', requireRole(ROLES.SUPER_ADMIN), (req, res, next) => {
+  try {
+    const orgId = parseInt(req.params.organizationId, 10);
+    const metrics = notificationDeliveryService.getNotificationMetrics(orgId);
+    const recent = notificationDeliveryService.listDeliveries({
+      organizationId: orgId,
+      limit: 15
+    });
+
+    res.json({
+      success: true,
+      data: {
+        organizationId: orgId,
+        metrics,
+        recentDeliveries: recent.deliveries
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/notifications/:id/retry
+ * Allows Super Admin to retry any delivery across the platform.
+ */
+router.post(
+  '/notifications/:id/retry',
+  requireRole(ROLES.SUPER_ADMIN),
+  validate({ params: deliveryIdParamSchema }),
+  async (req, res, next) => {
+    try {
+      const result = await notificationDeliveryService.retryDelivery(req.params.id, null);
+      res.json({
+        success: true,
+        data: result,
+        message: 'Notification delivery retry scheduled successfully'
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 module.exports = router;
 

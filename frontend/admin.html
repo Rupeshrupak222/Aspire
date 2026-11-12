@@ -112,6 +112,9 @@
           <button class="tab" data-tab="subscription" id="tab-subscription" style="display:none">
             <span class="nav-icon">&#128179;</span> Subscription & Usage
           </button>
+          <button class="tab" data-tab="notifications" id="tab-notifications" style="display:none">
+            <span class="nav-icon">&#128365;</span> Notifications & Emails
+          </button>
         </div>
       </div>
 
@@ -1558,6 +1561,160 @@
         <h3 style="font-family:var(--font-display);font-size:1.3rem;margin:0 0 16px;color:var(--color-navy)">Available Subscription Tiers</h3>
         <div id="plansGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:20px;margin-bottom:24px">
           <!-- Dynamically populated comparison cards -->
+        </div>
+      </div>
+
+    
+      <!-- =====================================================================
+           SCREEN 23: TRANSACTIONAL NOTIFICATIONS & EMAIL DELIVERY (Day 23)
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-notifications" style="display:none">
+        <div class="section-title-wrap" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+          <div>
+            <h2 style="font-family:var(--font-display);font-size:1.8rem;margin:0 0 6px;color:var(--color-navy)">Transactional Email & Delivery Intelligence</h2>
+            <p style="color:var(--color-text-muted);margin:0;font-size:0.95rem">
+              Real-time audit log of automated transactional emails dispatched to candidates and administrators.
+            </p>
+          </div>
+          <div style="display:flex;gap:12px">
+            <button id="refreshNotificationsBtn" class="btn small outline" style="display:flex;align-items:center;gap:6px">
+              <span>&#8635;</span> Refresh Log
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI Metric Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:16px;margin-bottom:28px">
+          <div style="background:#fff;border:1px solid var(--color-light-border);border-radius:12px;padding:18px 20px">
+            <div style="color:var(--color-text-muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Total Sent</div>
+            <div id="notifKpiTotal" style="font-size:1.8rem;font-weight:700;color:var(--color-navy);margin-top:6px">0</div>
+            <div style="color:var(--color-text-muted);font-size:0.75rem;margin-top:4px">Dispatched messages</div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--color-light-border);border-radius:12px;padding:18px 20px">
+            <div style="color:var(--color-text-muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Delivered</div>
+            <div id="notifKpiDelivered" style="font-size:1.8rem;font-weight:700;color:#0D9488;margin-top:6px">0</div>
+            <div style="color:var(--color-text-muted);font-size:0.75rem;margin-top:4px">Verified mail server receipt</div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--color-light-border);border-radius:12px;padding:18px 20px">
+            <div style="color:var(--color-text-muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Delivery Rate</div>
+            <div id="notifKpiRate" style="font-size:1.8rem;font-weight:700;color:var(--color-gold);margin-top:6px">100%</div>
+            <div style="color:var(--color-text-muted);font-size:0.75rem;margin-top:4px">Delivery success ratio</div>
+          </div>
+          <div style="background:#fff;border:1px solid var(--color-light-border);border-radius:12px;padding:18px 20px">
+            <div style="color:var(--color-text-muted);font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px;font-weight:600">Failed / Bounced</div>
+            <div id="notifKpiFailed" style="font-size:1.8rem;font-weight:700;color:#E11D48;margin-top:6px">0</div>
+            <div style="color:var(--color-text-muted);font-size:0.75rem;margin-top:4px">Bounced or rejected</div>
+          </div>
+        </div>
+
+        <!-- Filter Controls & Search -->
+        <div style="background:#fff;border:1px solid var(--color-light-border);border-radius:12px;padding:20px;margin-bottom:24px">
+          <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+            <div style="flex:1;min-width:220px">
+              <input type="text" id="notifSearchInput" placeholder="Search by recipient email or message..." style="width:100%;padding:10px 14px;border:1px solid var(--color-light-border);border-radius:8px;font-size:0.9rem">
+            </div>
+            <div style="width:170px">
+              <select id="notifStatusFilter" style="width:100%;padding:10px 12px;border:1px solid var(--color-light-border);border-radius:8px;font-size:0.9rem">
+                <option value="">All Statuses</option>
+                <option value="SENT">Sent</option>
+                <option value="DELIVERED">Delivered</option>
+                <option value="PENDING">Pending / Queued</option>
+                <option value="FAILED">Failed</option>
+                <option value="BOUNCED">Bounced</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </div>
+            <div style="width:200px">
+              <select id="notifTemplateFilter" style="width:100%;padding:10px 12px;border:1px solid var(--color-light-border);border-radius:8px;font-size:0.9rem">
+                <option value="">All Templates</option>
+                <option value="REGISTRATION_CONFIRMED">Registration Confirmation</option>
+                <option value="EXAM_INVITATION">Exam Invitation</option>
+                <option value="EXAM_REMINDER">Exam Reminder</option>
+                <option value="EXAM_COMPLETED">Exam Completed</option>
+                <option value="RESULT_AVAILABLE">Result Available</option>
+                <option value="CERTIFICATE_AVAILABLE">Certificate Available</option>
+              </select>
+            </div>
+            <button id="applyNotifFiltersBtn" class="btn small" style="padding:10px 18px">Filter</button>
+          </div>
+        </div>
+
+        <!-- Notification History Log Table -->
+        <div style="background:#fff;border:1px solid var(--color-light-border);border-radius:12px;padding:24px;margin-bottom:28px">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+              <thead>
+                <tr style="border-bottom:2px solid var(--color-light-border);text-align:left;color:var(--color-text-muted);font-size:0.75rem;text-transform:uppercase">
+                  <th style="padding:10px 12px">Recipient</th>
+                  <th style="padding:10px 12px">Template / Event</th>
+                  <th style="padding:10px 12px">Channel / Provider</th>
+                  <th style="padding:10px 12px">Status</th>
+                  <th style="padding:10px 12px">Attempts</th>
+                  <th style="padding:10px 12px">Sent At</th>
+                  <th style="padding:10px 12px">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="notifTableBody">
+                <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--color-text-muted)">Loading notifications log...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <!-- Pagination -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--color-light-border)">
+            <span id="notifPaginationInfo" style="color:var(--color-text-muted);font-size:0.85rem">Showing 0-0 of 0</span>
+            <div style="display:flex;gap:8px">
+              <button id="notifPrevPageBtn" class="btn small outline" disabled>Previous</button>
+              <button id="notifNextPageBtn" class="btn small outline" disabled>Next</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Communication Preferences Card -->
+        <div style="background:#fff;border:1px solid var(--color-light-border);border-radius:12px;padding:24px;margin-bottom:24px">
+          <h3 style="font-family:var(--font-display);font-size:1.3rem;margin:0 0 8px;color:var(--color-navy)">Email Communication Preferences</h3>
+          <p style="color:var(--color-text-muted);font-size:0.85rem;margin:0 0 20px">
+            Control which automated notifications are dispatched for your organization. Account & registration receipts remain mandatory.
+          </p>
+          <form id="notifPreferencesForm" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px">
+            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px;border:1px solid var(--color-light-border);border-radius:8px">
+              <input type="checkbox" id="prefEmailEnabled" checked style="width:18px;height:18px">
+              <div>
+                <strong style="display:block;font-size:0.9rem;color:var(--color-navy)">Global Email Delivery</strong>
+                <span style="font-size:0.75rem;color:var(--color-text-muted)">Master toggle for outgoing notifications</span>
+              </div>
+            </label>
+            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px;border:1px solid var(--color-light-border);border-radius:8px">
+              <input type="checkbox" id="prefExamInvitations" checked style="width:18px;height:18px">
+              <div>
+                <strong style="display:block;font-size:0.9rem;color:var(--color-navy)">Exam Invitations</strong>
+                <span style="font-size:0.75rem;color:var(--color-text-muted)">Send invitations with test access links</span>
+              </div>
+            </label>
+            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px;border:1px solid var(--color-light-border);border-radius:8px">
+              <input type="checkbox" id="prefExamReminders" checked style="width:18px;height:18px">
+              <div>
+                <strong style="display:block;font-size:0.9rem;color:var(--color-navy)">Exam Reminders</strong>
+                <span style="font-size:0.75rem;color:var(--color-text-muted)">Upcoming assessment alerts (24h / 1h)</span>
+              </div>
+            </label>
+            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px;border:1px solid var(--color-light-border);border-radius:8px">
+              <input type="checkbox" id="prefResultUpdates" checked style="width:18px;height:18px">
+              <div>
+                <strong style="display:block;font-size:0.9rem;color:var(--color-navy)">Result Announcements</strong>
+                <span style="font-size:0.75rem;color:var(--color-text-muted)">Notify candidates when grades are published</span>
+              </div>
+            </label>
+            <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px;border:1px solid var(--color-light-border);border-radius:8px">
+              <input type="checkbox" id="prefCertificateUpdates" checked style="width:18px;height:18px">
+              <div>
+                <strong style="display:block;font-size:0.9rem;color:var(--color-navy)">Certificate Issuance</strong>
+                <span style="font-size:0.75rem;color:var(--color-text-muted)">Deliver digital certificates and verification credentials</span>
+              </div>
+            </label>
+          </form>
+          <div style="margin-top:20px;display:flex;justify-content:flex-end">
+            <button id="saveNotifPreferencesBtn" class="btn" style="padding:10px 24px">Save Preferences</button>
+          </div>
         </div>
       </div>
 

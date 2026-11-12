@@ -109,6 +109,12 @@ function applyRoleAwareUI() {
   const orgsTab = document.getElementById('tab-organizations');
   if (orgsTab) orgsTab.style.display = role === 'SUPER_ADMIN' ? 'inline-block' : 'none';
 
+  // Notifications tab (Organization Admin or Super Admin)
+  const notifTab = document.getElementById('tab-notifications');
+  if (notifTab) {
+    notifTab.style.display = (role === 'SUPER_ADMIN' || role === 'ORG_ADMIN' || canAnalytics) ? 'inline-block' : 'none';
+  }
+
   // Branding & Profile tab (Organization Admin or tenant member)
   const brandingTab = document.getElementById('tab-branding');
   if (brandingTab) {
@@ -220,6 +226,8 @@ function switchTab(name) {
   if (name === 'organizations') loadOrganizations();
   if (name === 'branding') loadOrgBranding();
   if (name === 'reports') loadReports();
+  if (name === 'subscription') loadSubscription();
+  if (name === 'notifications') loadNotifications();
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
@@ -4515,3 +4523,229 @@ document.addEventListener('DOMContentLoaded', () => {
 // Initial boot
 gate();
 
+
+
+// ============================================================================
+// ASPIRE DAY 23: TRANSACTIONAL NOTIFICATIONS & EMAIL DELIVERY FRONTEND ENGINE
+// ============================================================================
+
+let currentNotifPage = 1;
+let totalNotifPages = 1;
+
+async function loadNotifications(page = 1) {
+  currentNotifPage = page;
+  const tbody = document.getElementById('notifTableBody');
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--color-text-muted)">Loading notifications log...</td></tr>';
+  }
+
+  const status = document.getElementById('notifStatusFilter')?.value || '';
+  const template = document.getElementById('notifTemplateFilter')?.value || '';
+  const search = document.getElementById('notifSearchInput')?.value || '';
+
+  const params = new URLSearchParams({ page, limit: 15 });
+  if (status) params.set('status', status);
+  if (template) params.set('event_type', template);
+  if (search) params.set('search', search);
+
+  const isSuperAdmin = currentUser && currentUser.role === 'SUPER_ADMIN';
+  const endpoint = isSuperAdmin
+    ? `/api/admin/notifications/deliveries?${params.toString()}`
+    : `/api/organization/notifications?${params.toString()}`;
+
+  try {
+    const res = await aapi(endpoint);
+    const deliveries = res.data || [];
+    const pagination = res.pagination || { page: 1, limit: 15, total: deliveries.length, totalPages: 1 };
+    totalNotifPages = pagination.totalPages || 1;
+
+    renderNotificationsTable(deliveries);
+    updateNotifPagination(pagination);
+
+    // Load Metrics
+    if (res.metrics) {
+      updateNotifMetrics(res.metrics);
+    } else if (isSuperAdmin) {
+      try {
+        const overviewRes = await aapi('/api/admin/notifications/overview');
+        if (overviewRes.data && overviewRes.data.metrics) {
+          updateNotifMetrics(overviewRes.data.metrics);
+        }
+      } catch (mErr) {}
+    }
+
+    // Load preferences
+    loadNotificationPreferences();
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:#E11D48">Failed to load notifications: ${err.message}</td></tr>`;
+    }
+  }
+}
+
+function updateNotifMetrics(metrics) {
+  if (!metrics) return;
+  const totalEl = document.getElementById('notifKpiTotal');
+  const delEl = document.getElementById('notifKpiDelivered');
+  const rateEl = document.getElementById('notifKpiRate');
+  const failedEl = document.getElementById('notifKpiFailed');
+
+  if (totalEl) totalEl.textContent = Number(metrics.total || 0).toLocaleString();
+  if (delEl) delEl.textContent = Number(metrics.delivered || 0).toLocaleString();
+  if (rateEl) rateEl.textContent = `${metrics.deliveryRate || 100}%`;
+  if (failedEl) failedEl.textContent = Number((metrics.failed || 0) + (metrics.bounced || 0)).toLocaleString();
+}
+
+function renderNotificationsTable(deliveries) {
+  const tbody = document.getElementById('notifTableBody');
+  if (!tbody) return;
+
+  if (!deliveries || deliveries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--color-text-muted)">No notification deliveries recorded yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = deliveries.map((d) => {
+    let statusBadge = '<span class="status-badge" style="background:#F3F4F6;color:#374151">UNKNOWN</span>';
+    if (d.status === 'SENT') {
+      statusBadge = '<span class="status-badge" style="background:#FEF3C7;color:#92400E">SENT</span>';
+    } else if (d.status === 'DELIVERED') {
+      statusBadge = '<span class="status-badge" style="background:#D1FAE5;color:#065F46">&#10003; DELIVERED</span>';
+    } else if (d.status === 'FAILED' || d.status === 'BOUNCED') {
+      statusBadge = `<span class="status-badge" style="background:#FEE2E2;color:#991B1B" title="${d.lastErrorMessage || ''}">${d.status}</span>`;
+    } else if (d.status === 'PROCESSING') {
+      statusBadge = '<span class="status-badge" style="background:#DBEAFE;color:#1E40AF">PROCESSING</span>';
+    } else if (d.status === 'CANCELLED') {
+      statusBadge = '<span class="status-badge" style="background:#E5E7EB;color:#6B7280">CANCELLED</span>';
+    }
+
+    const templateLabels = {
+      REGISTRATION_CONFIRMED: 'Registration Confirmed',
+      EXAM_INVITATION: 'Exam Invitation',
+      EXAM_REMINDER: 'Exam Reminder',
+      EXAM_COMPLETED: 'Exam Completed',
+      RESULT_AVAILABLE: 'Result Available',
+      CERTIFICATE_AVAILABLE: 'Certificate Available'
+    };
+    const tLabel = templateLabels[d.templateKey] || d.templateKey || 'General Notice';
+
+    const sentDate = d.sentAt || d.createdAt;
+    const formattedDate = sentDate ? new Date(sentDate).toLocaleString() : '—';
+
+    const canRetry = ['FAILED', 'BOUNCED', 'PROCESSING'].includes(d.status);
+    const retryBtn = canRetry
+      ? `<button class="btn small outline" onclick="retryNotificationDelivery('${d.id}')" style="padding:4px 8px;font-size:0.75rem">&#8635; Retry</button>`
+      : '—';
+
+    return `
+      <tr style="border-bottom:1px solid var(--color-light-border)">
+        <td style="padding:10px 12px;font-weight:600;color:var(--color-navy)">${d.recipientEmail || '—'}</td>
+        <td style="padding:10px 12px">${tLabel}</td>
+        <td style="padding:10px 12px;color:var(--color-text-muted)">${d.channel || 'EMAIL'} · ${d.provider || 'resend'}</td>
+        <td style="padding:10px 12px">${statusBadge}</td>
+        <td style="padding:10px 12px">${d.attemptCount || 1}</td>
+        <td style="padding:10px 12px;color:var(--color-text-muted)">${formattedDate}</td>
+        <td style="padding:10px 12px">${retryBtn}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updateNotifPagination(pagination) {
+  const infoEl = document.getElementById('notifPaginationInfo');
+  const prevBtn = document.getElementById('notifPrevPageBtn');
+  const nextBtn = document.getElementById('notifNextPageBtn');
+
+  if (infoEl) {
+    const start = (pagination.page - 1) * pagination.limit + 1;
+    const end = Math.min(pagination.page * pagination.limit, pagination.total);
+    infoEl.textContent = pagination.total > 0 ? `Showing ${start}-${end} of ${pagination.total}` : 'Showing 0-0 of 0';
+  }
+
+  if (prevBtn) prevBtn.disabled = pagination.page <= 1;
+  if (nextBtn) nextBtn.disabled = pagination.page >= pagination.totalPages;
+}
+
+async function retryNotificationDelivery(deliveryId) {
+  try {
+    const isSuperAdmin = currentUser && currentUser.role === 'SUPER_ADMIN';
+    const endpoint = isSuperAdmin
+      ? `/api/admin/notifications/${deliveryId}/retry`
+      : `/api/organization/notifications/${deliveryId}/retry`;
+
+    await aapi(endpoint, { method: 'POST' });
+    alert('Delivery retry scheduled successfully.');
+    loadNotifications(currentNotifPage);
+  } catch (err) {
+    alert(`Failed to retry delivery: ${err.message}`);
+  }
+}
+
+async function loadNotificationPreferences() {
+  try {
+    const res = await aapi('/api/organization/notifications/preferences');
+    const p = res.data;
+    if (!p) return;
+
+    const emailEl = document.getElementById('prefEmailEnabled');
+    const invEl = document.getElementById('prefExamInvitations');
+    const remEl = document.getElementById('prefExamReminders');
+    const resEl = document.getElementById('prefResultUpdates');
+    const certEl = document.getElementById('prefCertificateUpdates');
+
+    if (emailEl) emailEl.checked = Boolean(p.emailEnabled);
+    if (invEl) invEl.checked = Boolean(p.examInvitations);
+    if (remEl) remEl.checked = Boolean(p.examReminders);
+    if (resEl) resEl.checked = Boolean(p.resultUpdates);
+    if (certEl) certEl.checked = Boolean(p.certificateUpdates);
+  } catch (err) {}
+}
+
+async function saveNotificationPreferences(e) {
+  if (e) e.preventDefault();
+  const btn = document.getElementById('saveNotifPreferencesBtn');
+  if (btn) btn.disabled = true;
+
+  const payload = {
+    email_enabled: document.getElementById('prefEmailEnabled')?.checked,
+    exam_invitations: document.getElementById('prefExamInvitations')?.checked,
+    exam_reminders: document.getElementById('prefExamReminders')?.checked,
+    result_updates: document.getElementById('prefResultUpdates')?.checked,
+    certificate_updates: document.getElementById('prefCertificateUpdates')?.checked
+  };
+
+  try {
+    await aapi('/api/organization/notifications/preferences', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    alert('Notification preferences saved successfully.');
+  } catch (err) {
+    alert(`Failed saving preferences: ${err.message}`);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// Bind Notification event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  const refreshBtn = document.getElementById('refreshNotificationsBtn');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => loadNotifications(currentNotifPage));
+
+  const filterBtn = document.getElementById('applyNotifFiltersBtn');
+  if (filterBtn) filterBtn.addEventListener('click', () => loadNotifications(1));
+
+  const prevBtn = document.getElementById('notifPrevPageBtn');
+  if (prevBtn) prevBtn.addEventListener('click', () => {
+    if (currentNotifPage > 1) loadNotifications(currentNotifPage - 1);
+  });
+
+  const nextBtn = document.getElementById('notifNextPageBtn');
+  if (nextBtn) nextBtn.addEventListener('click', () => {
+    if (currentNotifPage < totalNotifPages) loadNotifications(currentNotifPage + 1);
+  });
+
+  const savePrefsBtn = document.getElementById('saveNotifPreferencesBtn');
+  if (savePrefsBtn) savePrefsBtn.addEventListener('click', saveNotificationPreferences);
+});

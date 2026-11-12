@@ -1,7 +1,9 @@
 // Organization Administrator & Tenant Self-Management Routes.
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const multer = require('multer');
+const { db } = require('../db');
 
 const { requireAuth, requirePermission } = require('../middleware/admin-auth');
 const { tenantContextMiddleware } = require('../middleware/tenant-context');
@@ -43,6 +45,14 @@ const {
   usageHistoryQuerySchema
 } = require('../validation/metering.schemas');
 const { requireFeature } = require('../middleware/quota-enforcement');
+const notificationService = require('../services/notifications/notification.service');
+const notificationDeliveryService = require('../services/notifications/notification-delivery.service');
+const notificationPreferencesService = require('../services/notifications/notification-preferences.service');
+const {
+  listNotificationsQuerySchema,
+  updatePreferencesSchema,
+  deliveryIdParamSchema
+} = require('../validation/notification.schemas');
 
 // Memory storage for file uploads (max 2MB)
 const upload = multer({
@@ -798,6 +808,264 @@ router.get(
       });
 
       res.json({ success: true, data: report });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ============================================================================
+// DAY 23: CANDIDATE EXAM INVITATIONS & TRANSACTIONAL NOTIFICATIONS
+// ============================================================================
+
+/**
+ * POST /api/organization/exams/:id/invite
+ * Invites one or more candidates to take an assessment, generating secure tokens
+ * and triggering transactional email delivery with scheduled reminders.
+ */
+router.post(
+  '/exams/:id/invite',
+  requirePermission(PERMISSIONS.EXAMS_CREATE, PERMISSIONS.EXAMS_UPDATE),
+  async (req, res, next) => {
+    try {
+      const examId = parseInt(req.params.id, 10);
+      if (isNaN(examId)) return next(new ValidationError('Invalid exam id'));
+
+      const exam = db.prepare('SELECT * FROM exams WHERE id = ?').get(examId);
+      if (!exam) return next(new NotFoundError('Exam not found'));
+
+      // Tenant boundary enforcement
+      if (req.user.role !== ROLES.SUPER_ADMIN && exam.organization_id !== req.user.organization_id) {
+        return next(new AuthorizationError('Cannot invite candidates to an exam belonging to another organization'));
+      }
+
+      const orgId = exam.organization_id || req.user.organization_id || 1;
+
+      // Normalize candidate list from body
+      let candidateList = [];
+      if (Array.isArray(req.body.candidates)) {
+        candidateList = req.body.candidates;
+      } else if (Array.isArray(req.body)) {
+        candidateList = req.body;
+      } else if (req.body.email) {
+        candidateList = [{
+          email: req.body.email,
+          name: req.body.name,
+          studentId: req.body.studentId
+        }];
+      }
+
+      if (!candidateList.length) {
+        return next(new ValidationError('At least one candidate email is required'));
+      }
+
+      const reminderHours = Array.isArray(req.body.scheduledReminderHours)
+        ? req.body.scheduledReminderHours
+        : (req.body.reminderHours ? [req.body.reminderHours] : []);
+
+      const results = [];
+
+      for (const cand of candidateList) {
+        const cleanEmail = String(cand.email || '').trim().toLowerCase();
+        if (!cleanEmail || !cleanEmail.includes('@')) continue;
+
+        const candName = cand.name ? String(cand.name).trim() : 'Candidate';
+        const invToken = crypto.randomBytes(24).toString('hex');
+
+        // Check if student exists
+        let studentId = cand.studentId || null;
+        if (!studentId) {
+          const sRow = db.prepare('SELECT id FROM students WHERE email = ?').get(cleanEmail);
+          if (sRow) studentId = sRow.id;
+        }
+
+        // Insert invitation record
+        const insertRes = db.prepare(`
+          INSERT INTO exam_candidate_invitations (
+            organization_id, exam_id, student_id, email, name, invitation_token,
+            status, invited_by, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, datetime('now'), datetime('now'))
+        `).run(orgId, examId, studentId, cleanEmail, candName, invToken, req.user.id);
+
+        const invitationId = insertRes.lastInsertRowid;
+
+        // Trigger invitation email
+        notificationService.sendExamInvitation({
+          organizationId: orgId,
+          examId,
+          studentId,
+          email: cleanEmail,
+          name: candName,
+          examTitle: exam.name,
+          durationMinutes: exam.duration_minutes || 90,
+          invitationToken: invToken
+        });
+
+        // Schedule optional reminders if requested
+        for (const rh of reminderHours) {
+          const delayHours = parseInt(rh, 10);
+          if (delayHours > 0) {
+            const scheduledAt = new Date(Date.now() + delayHours * 3600 * 1000).toISOString();
+            notificationService.scheduleExamReminder({
+              organizationId: orgId,
+              examId,
+              studentId,
+              email: cleanEmail,
+              name: candName,
+              examTitle: exam.name,
+              startTime: exam.scheduled_start_time || null,
+              durationMinutes: exam.duration_minutes || 90,
+              reminderType: `${delayHours}h`,
+              scheduledAt
+            });
+          }
+        }
+
+        // Mark invitation sent
+        db.prepare("UPDATE exam_candidate_invitations SET status = 'SENT', updated_at = datetime('now') WHERE id = ?").run(invitationId);
+
+        results.push({
+          id: invitationId,
+          email: cleanEmail,
+          name: candName,
+          invitationToken: invToken,
+          status: 'SENT'
+        });
+      }
+
+      res.status(201).json({
+        success: true,
+        data: {
+          count: results.length,
+          invitations: results
+        },
+        message: `Successfully invited ${results.length} candidate(s)`
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/notifications
+ * Lists transactional notification history with tenant isolation, pagination, and status filters.
+ */
+router.get(
+  '/notifications',
+  requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.SETTINGS_READ, PERMISSIONS.ORGANIZATIONS_READ),
+  validate({ query: listNotificationsQuerySchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+      const result = notificationDeliveryService.listDeliveries({
+        organizationId: orgId,
+        page: req.query.page,
+        limit: req.query.limit,
+        eventType: req.query.event_type,
+        status: req.query.status,
+        search: req.query.search,
+        startDate: req.query.start_date,
+        endDate: req.query.end_date
+      });
+
+      const metrics = notificationDeliveryService.getNotificationMetrics(orgId);
+
+      res.json({
+        success: true,
+        data: result.deliveries,
+        pagination: result.pagination,
+        metrics
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/notifications/preferences
+ * Returns communication preferences for the authenticated organization user.
+ */
+router.get(
+  '/notifications/preferences',
+  requirePermission(PERMISSIONS.SETTINGS_READ, PERMISSIONS.ORGANIZATIONS_READ),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+      const preferences = notificationPreferencesService.getNotificationPreferences(orgId, req.user.id);
+      res.json({ success: true, data: preferences });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * PUT /api/organization/notifications/preferences
+ * Updates communication preferences for the authenticated organization user.
+ */
+router.put(
+  '/notifications/preferences',
+  requirePermission(PERMISSIONS.SETTINGS_UPDATE, PERMISSIONS.ORGANIZATIONS_UPDATE),
+  validate({ body: updatePreferencesSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.organization_id;
+      if (!orgId) return next(new AuthorizationError('User account is not assigned to an organization'));
+
+      const updated = notificationPreferencesService.updateNotificationPreferences(orgId, req.user.id, req.body);
+      res.json({
+        success: true,
+        data: updated,
+        message: 'Notification preferences updated successfully'
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/notifications/:id
+ * Retrieves detail for a specific notification delivery with strict tenant scoping.
+ */
+router.get(
+  '/notifications/:id',
+  requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.SETTINGS_READ),
+  validate({ params: deliveryIdParamSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.role === ROLES.SUPER_ADMIN ? null : req.user.organization_id;
+      const delivery = notificationDeliveryService.getDelivery(req.params.id, orgId);
+      res.json({ success: true, data: delivery });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/organization/notifications/:id/retry
+ * Initiates an authorized manual retry for a failed notification delivery.
+ */
+router.post(
+  '/notifications/:id/retry',
+  requirePermission(PERMISSIONS.SETTINGS_UPDATE, PERMISSIONS.ORGANIZATIONS_UPDATE),
+  validate({ params: deliveryIdParamSchema }),
+  async (req, res, next) => {
+    try {
+      const orgId = req.user.role === ROLES.SUPER_ADMIN ? null : req.user.organization_id;
+      const result = await notificationDeliveryService.retryDelivery(req.params.id, orgId);
+      res.json({
+        success: true,
+        data: result,
+        message: 'Notification delivery retry scheduled successfully'
+      });
     } catch (err) {
       next(err);
     }
