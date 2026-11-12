@@ -86,8 +86,44 @@
 
       if (result.certificate_id) {
         const certLink = `/api/certificate/${result.certificate_id}`;
+        const verifyUrl = `/verify/${result.certificate_id}`;
         const dlBtn = document.getElementById('certDownloadLink');
         if (dlBtn) dlBtn.href = certLink;
+
+        const verifyBtn = document.getElementById('certVerifyLink');
+        if (verifyBtn) verifyBtn.href = verifyUrl;
+
+        const copyBtn = document.getElementById('copyCertLinkBtn');
+        if (copyBtn) {
+          copyBtn.onclick = () => {
+            const fullUrl = window.location.origin + verifyUrl;
+            navigator.clipboard.writeText(fullUrl).then(() => {
+              alert('Verification URL copied to clipboard: ' + fullUrl);
+            }).catch(() => {
+              prompt('Copy verification URL:', fullUrl);
+            });
+          };
+        }
+
+        // Fetch verification status
+        fetch(`/api/public/certificates/verify/${result.certificate_id}`)
+          .then(res => res.json())
+          .then(data => {
+            const badge = document.getElementById('certStatusBadge');
+            if (badge) {
+              if (data.status === 'VALID') {
+                badge.textContent = 'VALID CREDENTIAL';
+                badge.style.background = '#10B981';
+              } else if (data.status === 'REVOKED') {
+                badge.textContent = 'REVOKED';
+                badge.style.background = '#EF4444';
+              } else {
+                badge.textContent = data.status || 'UNVERIFIED';
+                badge.style.background = '#F59E0B';
+              }
+            }
+          })
+          .catch(() => {});
       }
 
       const recentBox = document.getElementById('recentResultBox');

@@ -1,11 +1,14 @@
-// Branded PDF certificate generation (PDFKit). A4 landscape.
-// Redesigned with Day 16 Multi-Tenant Cache Isolation & Day 17 Dynamic Organization Branding.
+// ============================================================================
+// ASPIRE DAY 24: UPGRADED PDF CERTIFICATE GENERATION SERVICE (PDFKit)
+// A4 Landscape with Embedded Verification QR Code, Public URL & Seal
+// ============================================================================
 
 const PDFDocument = require('pdfkit');
 const metrics = require('../utils/metrics');
 const { db } = require('../db');
 const path = require('path');
 const fs = require('fs');
+const { generateQrCodeBuffer } = require('./certificate/qr-code.service');
 
 // Default Adyapan palette
 const DEFAULT_ORANGE = '#F97316';
@@ -76,6 +79,20 @@ function clearCertificateCacheForOrg(organizationId) {
   }
 }
 
+function clearCertificateCacheForCert(organizationId, certificateId) {
+  if (!certificateId) return;
+  const key = getCertificateCacheKey(organizationId, certificateId);
+  certificateCache.delete(key);
+  certificateCache.delete(`global:${certificateId}`);
+  if (organizationId) {
+    certificateCache.delete(`${organizationId}:${certificateId}`);
+  }
+}
+
+// Hook into certificate lifecycle service for automated cache invalidation on revoke/reissue
+const { setClearCacheHook } = require('./certificate/certificate.service');
+setClearCacheHook(clearCertificateCacheForCert);
+
 function getCachedCertificate(organizationId, certificateId) {
   if (!certificateId) return null;
   const key = getCertificateCacheKey(organizationId, certificateId);
@@ -83,20 +100,23 @@ function getCachedCertificate(organizationId, certificateId) {
 }
 
 /**
- * Generates an official PDF certificate with dynamic organization branding.
+ * Generates an official PDF certificate with embedded QR code, public verification URL,
+ * and dynamic organization branding.
  */
-function generateCertificate({
+async function generateCertificate({
   name,
   percentage,
   scholarshipPct,
   certificateId,
   dateStr,
   brandName,
-  organizationId = null
+  organizationId = null,
+  qrCodeBuffer = null,
+  verificationUrl = null
 }) {
   const cacheKey = certificateId ? getCertificateCacheKey(organizationId, certificateId) : null;
   if (cacheKey && certificateCache.has(cacheKey)) {
-    return Promise.resolve(certificateCache.get(cacheKey));
+    return certificateCache.get(cacheKey);
   }
 
   // Fetch trusted organization branding
@@ -104,7 +124,7 @@ function generateCertificate({
   if (organizationId) {
     try {
       org = db.prepare('SELECT * FROM organizations WHERE id = ?').get(organizationId);
-    } catch {}
+    } catch { }
   }
 
   const primaryColor = (org && org.primary_color) || DEFAULT_NAVY;
@@ -115,7 +135,7 @@ function generateCertificate({
   if (org && org.certificate_branding_json) {
     try {
       branding = JSON.parse(org.certificate_branding_json);
-    } catch {}
+    } catch { }
   }
 
   const certTitle = branding.certificate_title || 'Certificate of Achievement';
@@ -123,6 +143,25 @@ function generateCertificate({
   const signatoryName = branding.authorized_signatory_name || 'Co-Founder';
   const signatoryTitle = branding.authorized_signatory_title || (org ? org.name : 'Adyapan Edutech Pvt. Ltd.');
   const footerText = branding.footer_text || 'Recognised by NSDC · Skill India Digital Hub · Ministry of MSME, Govt. of India';
+
+  // Construct canonical verification URL
+  const publicBaseUrl = process.env.CERTIFICATE_PUBLIC_BASE_URL || process.env.APP_BASE_URL || 'https://aspire.adyapan.com';
+  const effectiveVerificationUrl = verificationUrl || `${publicBaseUrl}/verify/${certificateId}`;
+  const cleanDisplayUrl = effectiveVerificationUrl.replace(/^https?:\/\//i, '');
+
+  // Pre-generate QR code buffer if not supplied
+  let effectiveQrBuffer = qrCodeBuffer;
+  if (!effectiveQrBuffer && certificateId) {
+    try {
+      effectiveQrBuffer = await generateQrCodeBuffer(effectiveVerificationUrl, {
+        width: 180,
+        margin: 1,
+        darkColor: primaryColor || '#08090B'
+      });
+    } catch (e) {
+      // Continue without QR if generation throws
+    }
+  }
 
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
@@ -162,77 +201,99 @@ function generateCertificate({
     doc.lineWidth(1).strokeColor(GOLD).rect(38, 38, W - 76, H - 76).stroke();
 
     // ---------- Header: Logo + Organization Brand ----------
-    drawDefaultLogoMark(doc, W / 2, 92, 30, primaryColor, accentColor);
+    drawDefaultLogoMark(doc, W / 2, 88, 28, primaryColor, accentColor);
 
-    doc.fillColor(primaryColor).font('Helvetica-Bold').fontSize(22)
-      .text(displayBrand.toUpperCase(), 0, 128, { align: 'center', width: W, characterSpacing: 3 });
-    doc.fillColor(accentColor).font('Helvetica-Bold').fontSize(9)
-      .text('LEARN  ·  EARN  ·  GET PLACED', 0, 154, { align: 'center', width: W, characterSpacing: 2 });
+    doc.fillColor(primaryColor).font('Helvetica-Bold').fontSize(20)
+      .text(displayBrand.toUpperCase(), 0, 122, { align: 'center', width: W, characterSpacing: 3 });
+    doc.fillColor(accentColor).font('Helvetica-Bold').fontSize(8.5)
+      .text('LEARN  ·  EARN  ·  GET PLACED', 0, 146, { align: 'center', width: W, characterSpacing: 2 });
 
     // ---------- Title ----------
-    doc.fillColor(INK).font('Helvetica-Bold').fontSize(30)
-      .text(certTitle, 0, 182, { align: 'center', width: W });
+    doc.fillColor(INK).font('Helvetica-Bold').fontSize(28)
+      .text(certTitle, 0, 172, { align: 'center', width: W });
     // Underline flourish
     doc.strokeColor(GOLD).lineWidth(1.5)
-      .moveTo(W / 2 - 150, 220).lineTo(W / 2 + 150, 220).stroke();
+      .moveTo(W / 2 - 140, 208).lineTo(W / 2 + 140, 208).stroke();
 
-    doc.fillColor(MUTE).font('Helvetica').fontSize(12)
-      .text('This is proudly presented to', 0, 232, { align: 'center', width: W });
+    doc.fillColor(MUTE).font('Helvetica').fontSize(11)
+      .text('This is proudly presented to', 0, 218, { align: 'center', width: W });
 
     // ---------- Recipient name ----------
-    doc.fillColor(primaryColor).font('Helvetica-Bold').fontSize(38)
-      .text(name, 60, 256, { align: 'center', width: W - 120 });
+    doc.fillColor(primaryColor).font('Helvetica-Bold').fontSize(36)
+      .text(name, 60, 240, { align: 'center', width: W - 120 });
 
     // Thin name underline
     doc.strokeColor(accentColor).lineWidth(1.2)
-      .moveTo(W / 2 - 160, 310).lineTo(W / 2 + 160, 310).stroke();
+      .moveTo(W / 2 - 150, 292).lineTo(W / 2 + 150, 292).stroke();
 
     // ---------- Achievement line ----------
     const pct = Number(percentage).toFixed(1);
-    doc.fillColor(INK).font('Helvetica').fontSize(13)
-      .text(`for scoring ${pct}% in the Aspire Scholarship Test`, 0, 324, { align: 'center', width: W });
+    doc.fillColor(INK).font('Helvetica').fontSize(12.5)
+      .text(`for scoring ${pct}% in the Aspire Scholarship Test`, 0, 306, { align: 'center', width: W });
 
     if (scholarshipPct > 0) {
       // Scholarship highlight pill
       const label = `Scholarship Earned: ${scholarshipPct}%`;
-      doc.font('Helvetica-Bold').fontSize(16);
+      doc.font('Helvetica-Bold').fontSize(15);
       const tw = doc.widthOfString(label);
-      const pillW = tw + 44, pillH = 30;
-      const px = (W - pillW) / 2, py = 348;
-      doc.roundedRect(px, py, pillW, pillH, 15).fill(accentColor);
-      doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(16)
-        .text(label, px, py + 8, { width: pillW, align: 'center' });
+      const pillW = tw + 40, pillH = 28;
+      const px = (W - pillW) / 2, py = 328;
+      doc.roundedRect(px, py, pillW, pillH, 14).fill(accentColor);
+      doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(15)
+        .text(label, px, py + 7, { width: pillW, align: 'center' });
     } else {
-      doc.fillColor(secondaryColor).font('Helvetica-Bold').fontSize(16)
-        .text('Certificate of Participation', 0, 352, { align: 'center', width: W });
+      doc.fillColor(secondaryColor).font('Helvetica-Bold').fontSize(15)
+        .text('Certificate of Participation', 0, 332, { align: 'center', width: W });
     }
 
     // ---------- Tagline ----------
-    doc.fillColor(LIGHT).font('Helvetica-Oblique').fontSize(11)
-      .text('Aspire. Achieve. Adyapan.', 0, 392, { align: 'center', width: W });
+    doc.fillColor(LIGHT).font('Helvetica-Oblique').fontSize(10.5)
+      .text('Aspire. Achieve. Adyapan.', 0, 370, { align: 'center', width: W });
 
-    // ---------- Verification seal ----------
-    drawSeal(doc, W / 2, 452, 30, primaryColor, accentColor, displayBrand);
+    // ---------- Center: Verification Seal ----------
+    drawSeal(doc, W / 2, 442, 28, primaryColor, accentColor, displayBrand);
 
-    // ---------- Signature (right) ----------
-    const sigX = W - 260, sigY = 470;
-    doc.strokeColor(INK).lineWidth(1).moveTo(sigX, sigY).lineTo(sigX + 180, sigY).stroke();
-    doc.fillColor(primaryColor).font('Helvetica-Bold').fontSize(11)
-      .text(signatoryName, sigX, sigY + 6, { width: 180, align: 'center' });
-    doc.fillColor(MUTE).font('Helvetica').fontSize(9)
-      .text(signatoryTitle, sigX, sigY + 20, { width: 180, align: 'center' });
+    // ---------- Left: QR Code & Verification Info ----------
+    const qrSize = 58;
+    const leftX = 64;
+    const leftY = 416;
 
-    // ---------- Issue details (left) ----------
-    const detX = 70, detY = 470;
-    doc.strokeColor(INK).lineWidth(1).moveTo(detX, detY).lineTo(detX + 180, detY).stroke();
+    if (effectiveQrBuffer) {
+      try {
+        doc.image(effectiveQrBuffer, leftX, leftY, { width: qrSize, height: qrSize });
+      } catch (err) { }
+    } else {
+      // Fallback placeholder box
+      doc.rect(leftX, leftY, qrSize, qrSize).lineWidth(1).strokeColor(GOLD).stroke();
+      doc.fillColor(MUTE).font('Helvetica').fontSize(8).text('QR CODE', leftX, leftY + 24, { width: qrSize, align: 'center' });
+    }
+
+    const textX = leftX + qrSize + 10;
+    const textY = leftY + 2;
+
     doc.fillColor(primaryColor).font('Helvetica-Bold').fontSize(9)
-      .text(`Certificate ID: ${certificateId}`, detX, detY + 6, { width: 180, align: 'center' });
-    doc.fillColor(MUTE).font('Helvetica').fontSize(9)
-      .text(`Issued: ${dateStr}`, detX, detY + 20, { width: 180, align: 'center' });
+      .text(`ID: ${certificateId}`, textX, textY, { width: 175 });
+    doc.fillColor(MUTE).font('Helvetica').fontSize(8)
+      .text(`Issued: ${dateStr}`, textX, textY + 13, { width: 175 });
+    doc.fillColor(MUTE).font('Helvetica').fontSize(7.5)
+      .text('Scan QR or verify at:', textX, textY + 26, { width: 175 });
+    doc.fillColor(accentColor).font('Helvetica-Bold').fontSize(7)
+      .text(cleanDisplayUrl, textX, textY + 38, { width: 175 });
 
-    // ---------- Recognitions strip (bottom center) ----------
+    // ---------- Right: Authorized Signatory ----------
+    const sigX = W - 250, sigY = 445;
+    doc.strokeColor(INK).lineWidth(1).moveTo(sigX, sigY).lineTo(sigX + 175, sigY).stroke();
+    doc.fillColor(primaryColor).font('Helvetica-Bold').fontSize(10.5)
+      .text(signatoryName, sigX, sigY + 6, { width: 175, align: 'center' });
+    doc.fillColor(MUTE).font('Helvetica').fontSize(8.5)
+      .text(signatoryTitle, sigX, sigY + 19, { width: 175, align: 'center' });
+
+    // ---------- Bottom: Authenticity Statement & Accreditation Strip ----------
+    doc.fillColor(MUTE).font('Helvetica-Oblique').fontSize(8)
+      .text('This credential can be independently verified through Aspire by Adyapan.', 0, H - 68, { align: 'center', width: W });
+
     doc.fillColor(LIGHT).font('Helvetica').fontSize(7.5)
-      .text(footerText, 0, H - 58, { align: 'center', width: W, characterSpacing: 0.3 });
+      .text(footerText, 0, H - 52, { align: 'center', width: W, characterSpacing: 0.3 });
 
     doc.end();
   });
@@ -243,5 +304,6 @@ module.exports = {
   getCertificateCacheKey,
   getCachedCertificate,
   clearCertificateCache,
-  clearCertificateCacheForOrg
+  clearCertificateCacheForOrg,
+  clearCertificateCacheForCert
 };

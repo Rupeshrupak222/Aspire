@@ -333,12 +333,40 @@ async function atomicSubmitAttempt(attemptToken, options = {}) {
     const was_late = isLate ? 1 : 0;
     const finalized_by = isAutoFinalize ? 'AUTO_TIMEOUT' : (isLate ? 'AUTO_TIMEOUT' : 'CANDIDATE');
 
+    let examTitle = 'Scholarship Assessment';
+    if (att.exam_id) {
+      try {
+        const ex = targetDb.prepare('SELECT name FROM exams WHERE id = ?').get(att.exam_id);
+        if (ex && ex.name) examTitle = ex.name;
+      } catch {}
+    }
+
     // 6. Atomic Finalization Commit Transaction
     const commitTx = targetDb.transaction(() => {
       // Re-read attempt within transaction to check certificate idempotency
       const existingAtt = targetDb.prepare('SELECT certificate_id, claim_code FROM attempts WHERE id = ?').get(att.id);
-      const certificate_id = existingAtt.certificate_id || ('ASP26-' + randHex(4).toUpperCase());
       const claim_code = existingAtt.claim_code || ('ASP-' + randAlnum(6));
+      let certificate_id = existingAtt.certificate_id;
+
+      try {
+        const certService = require('./certificate/certificate.service');
+        const certResult = certService.issueCertificate({
+          attemptId: att.id,
+          organizationId: att.organization_id || null,
+          studentId: student ? student.id : att.student_id,
+          studentName: student ? student.name : 'Candidate',
+          examId: att.exam_id || null,
+          examTitle,
+          score,
+          totalMarks: total,
+          percentage,
+          scholarshipPct: scholarship_pct
+        });
+        certificate_id = certResult.certificate.certificate_id;
+      } catch (certErr) {
+        logger.warn({ attemptId: att.id, err: certErr.message }, 'Failed issuing digital certificate record; using fallback ID');
+        certificate_id = certificate_id || ('ASP26-' + randHex(4).toUpperCase());
+      }
 
       targetDb.prepare(`
         UPDATE attempts SET

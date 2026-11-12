@@ -44,6 +44,11 @@ function createApp() {
     : path.join(__dirname, '..', '..', 'frontend');
   app.use(express.static(frontendDir));
 
+  // Public verification page route
+  app.get('/verify/:certificateId?', (req, res) => {
+    res.sendFile(path.join(frontendDir, 'verify.html'));
+  });
+
   // 8. Health check & API Routes
   const { checkDbHealth } = require('./db');
   const healthHandler = (req, res) => {

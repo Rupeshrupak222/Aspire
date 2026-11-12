@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital Certificate Verification — Aspire by Adyapan</title>
+  <meta name="description" content="Independently verify digital scholarship and achievement certificates issued by Aspire by Adyapan.">
+  <link rel="icon" type="image/png" href="/assets/logo/aspire-submark-white.png">
+  
+  <!-- Fonts -->
+  <link rel="stylesheet" href="/assets/fonts/fonts.css">
+  
+  <style>
+    :root {
+      --color-midnight: #08090B;
+      --color-canvas: #0F1115;
+      --color-card: #15181E;
+      --color-card-border: rgba(255, 255, 255, 0.08);
+      --color-gold: #FFC900;
+      --color-gold-hover: #E5B400;
+      --color-offwhite: #F5F3EF;
+      --color-text-muted: #8E929B;
+      --color-emerald: #10B981;
+      --color-crimson: #EF4444;
+      --color-amber: #F59E0B;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--color-midnight);
+      color: var(--color-offwhite);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient Background Glow */
+    .ambient-glow {
+      position: fixed;
+      top: -200px;
+      right: 10%;
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(255, 201, 0, 0.06) 0%, rgba(8, 9, 11, 0) 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Top Navigation Header */
+    header.verify-header {
+      position: relative;
+      z-index: 10;
+      padding: 24px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--color-card-border);
+      background: rgba(8, 9, 11, 0.85);
+      backdrop-filter: blur(12px);
+    }
+
+    .brand-logo-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+
+    .brand-logo-wrap img {
+      height: 38px;
+      width: auto;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(255, 201, 0, 0.1);
+      border: 1px solid rgba(255, 201, 0, 0.25);
+      color: var(--color-gold);
+      font-weight: 600;
+    }
+
+    /* Main Container */
+    main.verify-main {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      max-width: 860px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+
+    .hero-heading-block {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .hero-eyebrow {
+      font-size: 0.8rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--color-gold);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 3.5vw, 2.75rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+      color: #FFFFFF;
+    }
+
+    .hero-subtitle {
+      font-size: 0.95rem;
+      color: var(--color-text-muted);
+      max-width: 580px;
+      margin: 0 auto;
+    }
+
+    /* Search Bar Form */
+    .verify-search-card {
+      background: var(--color-card);
+      border: 1px solid var(--color-card-border);
+      border-radius: 14px;
+      padding: 8px;
+      margin-bottom: 36px;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .verify-search-card:focus-within {
+      border-color: rgba(255, 201, 0, 0.4);
+      box-shadow: 0 12px 32px rgba(255, 201, 0, 0.08);
+    }
+
+    .search-form-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      padding: 14px 18px;
+      font-size: 1.05rem;
+      font-family: monospace;
+      font-weight: 600;
+      color: #FFFFFF;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      outline: none;
+    }
+
+    .search-input::placeholder {
+      font-family: var(--font-sans);
+      text-transform: none;
+      font-size: 0.95rem;
+      letter-spacing: normal;
+      color: #555A64;
+    }
+
+    .search-btn {
+      background: var(--color-gold);
+      color: var(--color-midnight);
+      border: none;
+      border-radius: 10px;
+      padding: 0 28px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background-color 0.15s ease, transform 0.1s ease;
+      white-space: nowrap;
+    }
+
+    .search-btn:hover {
+      background: var(--color-gold-hover);
+      transform: translateY(-1px);
+    }
+
+    .search-btn:active {
+      transform: translateY(0);
+    }
+
+    /* Verification Result Display */
+    .result-stage {
+      display: none;
+      animation: fadeIn 0.3s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .credential-card {
+      background: var(--color-card);
+      border: 1px solid var(--color-card-border);
+      border-radius: 16px;
+      padding: 36px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Status Header */
+    .card-status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--color-card-border);
+      padding-bottom: 24px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 18px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .badge-status.valid {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34D399;
+    }
+
+    .badge-status.revoked {
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #F87171;
+    }
+
+    .badge-status.invalid {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #FBBF24;
+    }
+
+    .badge-status.not-found {
+      background: rgba(142, 146, 155, 0.12);
+      border: 1px solid rgba(142, 146, 155, 0.3);
+      color: #9CA3AF;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .cert-id-tag {
+      font-family: monospace;
+      font-size: 0.95rem;
+      color: var(--color-gold);
+      background: rgba(255, 201, 0, 0.08);
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 201, 0, 0.18);
+    }
+
+    /* Credential Content */
+    .recipient-lead {
+      font-size: 0.85rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--color-text-muted);
+      margin-bottom: 6px;
+    }
+
+    .recipient-name {
+      font-family: var(--font-display);
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      color: #FFFFFF;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .exam-program-title {
+      font-size: 1.15rem;
+      color: var(--color-gold);
+      font-weight: 500;
+      margin-bottom: 24px;
+    }
+
+    /* Metrics Grid */
+    .metrics-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--color-card-border);
+      border-radius: 12px;
+    }
+
+    .metric-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .metric-value.gold {
+      color: var(--color-gold);
+    }
+
+    /* Metadata Specification Table */
+    .spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 28px;
+      font-size: 0.9rem;
+    }
+
+    .spec-table tr {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .spec-table tr:last-child {
+      border-bottom: none;
+    }
+
+    .spec-table td {
+      padding: 12px 0;
+    }
+
+    .spec-table td.label-col {
+      color: var(--color-text-muted);
+      width: 38%;
+    }
+
+    .spec-table td.val-col {
+      color: #FFFFFF;
+      font-weight: 500;
+    }
+
+    /* Trust & Security Footnote */
+    .authenticity-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 16px 20px;
+      background: rgba(16, 185, 129, 0.06);
+      border: 1px solid rgba(16, 185, 129, 0.18);
+      border-radius: 10px;
+      font-size: 0.85rem;
+      color: #D1FAE5;
+      margin-bottom: 24px;
+    }
+
+    .authenticity-note.revoked-note {
+      background: rgba(239, 68, 68, 0.06);
+      border-color: rgba(239, 68, 68, 0.2);
+      color: #FEE2E2;
+    }
+
+    .authenticity-note.invalid-note {
+      background: rgba(245, 158, 11, 0.06);
+      border-color: rgba(245, 158, 11, 0.2);
+      color: #FEF3C7;
+    }
+
+    .shield-icon {
+      font-size: 1.25rem;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* Action Toolbar */
+    .card-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn-action {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--color-card-border);
+      color: #FFFFFF;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-action:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-action.gold-cta {
+      background: var(--color-gold);
+      color: var(--color-midnight);
+      border-color: var(--color-gold);
+      font-weight: 600;
+    }
+
+    .btn-action.gold-cta:hover {
+      background: var(--color-gold-hover);
+    }
+
+    /* Loading Spinner Stage */
+    .loading-stage {
+      display: none;
+      text-align: center;
+      padding: 64px 20px;
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(255, 201, 0, 0.15);
+      border-top-color: var(--color-gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 18px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Footer */
+    footer.verify-footer {
+      border-top: 1px solid var(--color-card-border);
+      padding: 32px 24px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      margin-top: auto;
+    }
+
+    footer.verify-footer a {
+      color: var(--color-gold);
+      text-decoration: none;
+    }
+
+    footer.verify-footer a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 640px) {
+      .search-form-row {
+        flex-direction: column;
+      }
+      .credential-card {
+        padding: 24px 18px;
+      }
+      .card-status-bar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-glow" aria-hidden="true"></div>
+
+  <!-- Header -->
+  <header class="verify-header">
+    <a href="/index.html" class="brand-logo-wrap" aria-label="Aspire Homepage">
+      <img src="/assets/logo/aspire-primary-logo-white.png" alt="Aspire by Adyapan">
+    </a>
+    <div class="header-badge">
+      <span>●</span> Official Registry
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="verify-main">
+    
+    <div class="hero-heading-block">
+      <div class="hero-eyebrow">Digital Credential Verification</div>
+      <h1 class="hero-title">Authenticate Certificate</h1>
+      <p class="hero-subtitle">
+        Independently verify academic and scholarship achievements issued on the Aspire platform with cryptographic integrity guarantees.
+      </p>
+    </div>
+
+    <!-- Manual Certificate Search Input -->
+    <div class="verify-search-card">
+      <form id="verifyForm" class="search-form-row" onsubmit="handleFormSubmit(event)">
+        <input 
+          type="text" 
+          id="certIdInput" 
+          class="search-input" 
+          placeholder="Enter Certificate ID (e.g. ASP26-A1B2C3D4)" 
+          autocomplete="off"
+          spellcheck="false"
+          required
+        />
+        <button type="submit" class="search-btn" id="verifyBtn">
+          <span>Verify</span>
+          <span aria-hidden="true">→</span>
+        </button>
+      </form>
+    </div>
+
+    <!-- Loading State -->
+    <div class="loading-stage" id="loadingStage">
+      <div class="spinner"></div>
+      <p style="color:var(--color-text-muted);font-size:0.95rem;">
+        Cryptographically verifying digital signature and audit trail...
+      </p>
+    </div>
+
+    <!-- Result Display Container -->
+    <div class="result-stage" id="resultStage">
+      <div class="credential-card" id="credentialCard">
+        <!-- Rendered dynamically by JavaScript -->
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="verify-footer">
+    <p>
+      &copy; 2026 Aspire by Adyapan Edutech. All rights reserved. 
+      <br>
+      Independent Digital Credential System powered by HMAC-SHA256 Cryptographic Verification.
+    </p>
+  </footer>
+
+  <script>
+    // Extract Certificate ID from pathname (/verify/:id) or query parameter (?id=...)
+    function getCertificateIdFromUrl() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryId = urlParams.get('id') || urlParams.get('cert') || urlParams.get('certificateId');
+      if (queryId) return queryId.trim();
+
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const verifyIdx = pathParts.indexOf('verify');
+      if (verifyIdx !== -1 && pathParts[verifyIdx + 1]) {
+        return pathParts[verifyIdx + 1].trim();
+      }
+
+      return '';
+    }
+
+    async function executeVerification(certificateId) {
+      if (!certificateId) return;
+
+      const loadingStage = document.getElementById('loadingStage');
+      const resultStage = document.getElementById('resultStage');
+      const certInput = document.getElementById('certIdInput');
+
+      certInput.value = certificateId.toUpperCase();
+      loadingStage.style.display = 'block';
+      resultStage.style.display = 'none';
+
+      try {
+        const response = await fetch(`/api/public/certificates/verify/${encodeURIComponent(certificateId)}`);
+        const result = await response.json();
+        renderVerificationResult(result);
+      } catch (err) {
+        renderNetworkError(err);
+      } finally {
+        loadingStage.style.display = 'none';
+        resultStage.style.display = 'block';
+      }
+    }
+
+    function renderVerificationResult(res) {
+      const card = document.getElementById('credentialCard');
+      const status = res.status;
+      const data = res.data || {};
+
+      if (status === 'VALID') {
+        const issuedDateStr = data.issuedAt 
+          ? new Date(data.issuedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+          : 'Official Record';
+
+        card.innerHTML = `
+          <div class="card-status-bar">
+            <span class="badge-status valid">
+              <span class="status-dot"></span>
+              VALID CREDENTIAL
+            </span>
+            <span class="cert-id-tag">${escapeHtml(data.certificateId)}</span>
+          </div>
+
+          <div class="recipient-lead">Official Recipient</div>
+          <h2 class="recipient-name">${escapeHtml(data.studentName)}</h2>
+          <div class="exam-program-title">${escapeHtml(data.examTitle)}</div>
+
+          <div class="metrics-summary-grid">
+            <div class="metric-item">
+              <span class="metric-label">Score Attained</span>
+              <span class="metric-value">${data.finalScore} / ${data.maximumScore}</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Percentage</span>
+              <span class="metric-value">${Number(data.scorePercentage).toFixed(1)}%</span>
+            </div>
+            <div class="metric-item">
+              <span class="metric-label">Scholarship</span>
+              <span class="metric-value gold">${data.scholarshipPercentage}%</span>
+            </div>
+          </div>
+
+          <table class="spec-table">
+            <tr>
+              <td class="label-col">Issuing Institution</td>
+              <td class="val-col">${escapeHtml(data.organizationName || 'Aspire by Adyapan')}</td>
+            </tr>
+            <tr>
+              <td class="label-col">Date of Issuance</td>
+              <td class="val-col">${issuedDateStr}</td>
+            </tr>
+            <tr>
+              <td class="label-col">Integrity Protection</td>
+              <td class="val-col">HMAC-SHA256 Cryptographic Signature</td>
+            </tr>
+            <tr>
+              <td class="label-col">Verification Timestamp</td>
+              <td class="val-col">${new Date().toUTCString()}</td>
+            </tr>
+          </table>
+
+          <div class="authenticity-note">
+            <span class="shield-icon">🛡️</span>
+            <div>
+              <strong>Cryptographically Authenticated:</strong> 
+              ${escapeHtml(data.message || 'This certificate is authentic and has been successfully verified by Aspire by Adyapan.')}
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <a href="/api/public/certificate/${encodeURIComponent(data.certificateId)}" class="btn-action gold-cta" download>
+              <span>Download Official PDF</span>
+              <span>↓</span>
+            </a>
+            <button onclick="copyVerificationUrl('${escapeHtml(data.certificateId)}')" class="btn-action">
+              <span>Copy Link</span>
+              <span>📋</span>
+            </button>
+          </div>
+        `;
+      } else if (status === 'REVOKED') {
+        const revokedDate = data.revokedAt 
+          ? new Date(data.revokedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+          : 'Previously';
+
+        card.innerHTML = `
+          <div class="card-status-bar">
+            <span class="badge-status revoked">
+              <span class="status-dot"></span>
+              REVOKED CREDENTIAL
+            </span>
+            <span class="cert-id-tag">${escapeHtml(data.certificateId)}</span>
+          </div>
+
+          <div class="authenticity-note revoked-note">
+            <span class="shield-icon">⚠️</span>
+            <div>
+              <strong style="color:#EF4444;font-size:1rem;display:block;margin-bottom:4px;">This Certificate Has Been Revoked</strong>
+              ${escapeHtml(data.message || 'This credential is no longer valid and has been revoked by the issuing institution.')}
+            </div>
+          </div>
+
+          <table class="spec-table">
+            <tr>
+              <td class="label-col">Certificate Identifier</td>
+              <td class="val-col" style="font-family:monospace">${escapeHtml(data.certificateId)}</td>
+            </tr>
+            <tr>
+              <td class="label-col">Revocation Date</td>
+              <td class="val-col">${revokedDate}</td>
+            </tr>
+            <tr>
+              <td class="label-col">Official Reason</td>
+              <td class="val-col" style="color:#FCA5A5">${escapeHtml(data.revocationReason || 'Revoked by administrator')}</td>
+            </tr>
+            ${data.reissuedAsCertificateId ? `
+            <tr>
+              <td class="label-col">Reissued Credential</td>
+              <td class="val-col">
+                <a href="/verify/${escapeHtml(data.reissuedAsCertificateId)}" style="color:var(--color-gold);text-decoration:underline;">
+                  View Replacement Certificate (${escapeHtml(data.reissuedAsCertificateId)})
+                </a>
+              </td>
+            </tr>
+            ` : ''}
+          </table>
+        `;
+      } else if (status === 'INVALID') {
+        card.innerHTML = `
+          <div class="card-status-bar">
+            <span class="badge-status invalid">
+              <span class="status-dot"></span>
+              INTEGRITY CHECK FAILED
+            </span>
+            ${data.certificateId ? `<span class="cert-id-tag">${escapeHtml(data.certificateId)}</span>` : ''}
+          </div>
+
+          <div class="authenticity-note invalid-note">
+            <span class="shield-icon">⛔</span>
+            <div>
+              <strong style="color:#F59E0B;font-size:1rem;display:block;margin-bottom:4px;">Integrity Verification Failed</strong>
+              ${escapeHtml(data.message || 'The cryptographic signature or canonical payload hash could not be validated. This certificate cannot be trusted as authentic.')}
+            </div>
+          </div>
+          <p style="color:var(--color-text-muted);font-size:0.9rem;">
+            If you suspect an error or require assistance, please contact the issuing educational institution or Aspire Platform Support.
+          </p>
+        `;
+      } else {
+        // NOT_FOUND
+        card.innerHTML = `
+          <div class="card-status-bar">
+            <span class="badge-status not-found">
+              <span class="status-dot"></span>
+              CREDENTIAL NOT FOUND
+            </span>
+          </div>
+
+          <div style="padding:16px 0;">
+            <h3 style="font-size:1.25rem;margin-bottom:8px;color:#FFFFFF">Certificate Not Found</h3>
+            <p style="color:var(--color-text-muted);font-size:0.95rem;margin-bottom:20px;">
+              No record matches Certificate ID <strong>${escapeHtml(data.certificateId || certInput.value)}</strong> in the Aspire authoritative registry.
+            </p>
+            <p style="color:var(--color-text-muted);font-size:0.85rem;">
+              Please ensure the identifier was entered correctly, including the prefix (e.g. <code>ASP26-A1B2C3D4</code>).
+            </p>
+          </div>
+        `;
+      }
+    }
+
+    function renderNetworkError(err) {
+      const card = document.getElementById('credentialCard');
+      card.innerHTML = `
+        <div class="card-status-bar">
+          <span class="badge-status invalid">NETWORK ERROR</span>
+        </div>
+        <div style="padding:12px 0;">
+          <h3 style="color:#EF4444;margin-bottom:8px;">Unable to Connect to Verification Server</h3>
+          <p style="color:var(--color-text-muted);margin-bottom:16px;">
+            A network disruption prevented the certificate authentication check. Please check your internet connection and try again.
+          </p>
+          <button onclick="handleFormSubmit(event)" class="btn-action">Retry Check</button>
+        </div>
+      `;
+    }
+
+    function handleFormSubmit(e) {
+      if (e) e.preventDefault();
+      const val = document.getElementById('certIdInput').value.trim();
+      if (!val) return;
+
+      // Update browser URL without reloading
+      const newUrl = `/verify/${encodeURIComponent(val)}`;
+      window.history.pushState({ certId: val }, '', newUrl);
+
+      executeVerification(val);
+    }
+
+    function copyVerificationUrl(certificateId) {
+      const url = `${window.location.origin}/verify/${certificateId}`;
+      navigator.clipboard.writeText(url).then(() => {
+        alert('Verification URL copied to clipboard: ' + url);
+      }).catch(() => {
+        prompt('Copy verification URL:', url);
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Initialize on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const initialId = getCertificateIdFromUrl();
+      if (initialId) {
+        executeVerification(initialId);
+      }
+    });
+
+    window.addEventListener('popstate', (e) => {
+      const id = getCertificateIdFromUrl();
+      if (id) {
+        executeVerification(id);
+      }
+    });
+  </script>
+</body>
+</html>
+

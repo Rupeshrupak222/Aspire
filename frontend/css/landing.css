@@ -1072,6 +1072,12 @@ ol {
   margin-bottom: 32px;
   min-height: auto;
   white-space: nowrap;
+  word-break: keep-all;
+}
+
+.step-celebrate .step-desc {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
 }
 
 .step-icon-circle {

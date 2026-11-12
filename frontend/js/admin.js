@@ -115,6 +115,12 @@ function applyRoleAwareUI() {
     notifTab.style.display = (role === 'SUPER_ADMIN' || role === 'ORG_ADMIN' || canAnalytics) ? 'inline-block' : 'none';
   }
 
+  // Certificates tab (Organization Admin or Super Admin)
+  const certsTab = document.getElementById('tab-certificates');
+  if (certsTab) {
+    certsTab.style.display = (role === 'SUPER_ADMIN' || role === 'ORG_ADMIN' || canAnalytics) ? 'inline-block' : 'none';
+  }
+
   // Branding & Profile tab (Organization Admin or tenant member)
   const brandingTab = document.getElementById('tab-branding');
   if (brandingTab) {
@@ -228,6 +234,7 @@ function switchTab(name) {
   if (name === 'reports') loadReports();
   if (name === 'subscription') loadSubscription();
   if (name === 'notifications') loadNotifications();
+  if (name === 'certificates') loadCertificates();
 }
 document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
@@ -4748,4 +4755,244 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const savePrefsBtn = document.getElementById('saveNotifPreferencesBtn');
   if (savePrefsBtn) savePrefsBtn.addEventListener('click', saveNotificationPreferences);
+});
+
+// ============================================================================
+// ASPIRE DAY 24: DIGITAL CERTIFICATES & VERIFICATION FRONTEND ENGINE
+// ============================================================================
+
+let currentCertPage = 1;
+let totalCertPages = 1;
+let certToRevoke = null;
+
+async function loadCertificates(page = 1) {
+  currentCertPage = page;
+  const tbody = document.getElementById('certificatesTableBody');
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--color-text-muted)">Loading certificate registry...</td></tr>';
+  }
+
+  const search = document.getElementById('certSearchInput')?.value?.trim() || '';
+  const status = document.getElementById('certStatusFilter')?.value || 'ALL';
+
+  const params = new URLSearchParams();
+  params.set('page', page);
+  params.set('limit', 15);
+  if (search) params.set('search', search);
+  if (status && status !== 'ALL') params.set('status', status);
+
+  const isSuperAdmin = currentUser && currentUser.role === 'SUPER_ADMIN';
+  const endpoint = isSuperAdmin
+    ? `/api/admin/certificates?${params.toString()}`
+    : `/api/organization/certificates?${params.toString()}`;
+
+  try {
+    const res = await aapi(endpoint);
+    const certificates = res.data?.certificates || [];
+    const pagination = res.data?.pagination || {};
+    totalCertPages = pagination.totalPages || 1;
+
+    renderCertificatesTable(certificates);
+    updateCertPagination(pagination);
+    updateCertKPIs(certificates, pagination.total || 0);
+  } catch (err) {
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:24px;color:#EF4444">Failed to load certificates: ${err.message}</td></tr>`;
+    }
+  }
+}
+
+function updateCertKPIs(certificates, total) {
+  const kpiTotal = document.getElementById('kpiTotalCerts');
+  const kpiValid = document.getElementById('kpiValidCerts');
+  const kpiRevoked = document.getElementById('kpiRevokedCerts');
+
+  let validCount = 0;
+  let revokedCount = 0;
+  for (const c of certificates) {
+    if (c.verification_status === 'VALID') validCount++;
+    if (c.verification_status === 'REVOKED') revokedCount++;
+  }
+
+  if (kpiTotal) kpiTotal.textContent = total;
+  if (kpiValid) kpiValid.textContent = validCount;
+  if (kpiRevoked) kpiRevoked.textContent = revokedCount;
+}
+
+function renderCertificatesTable(certificates) {
+  const tbody = document.getElementById('certificatesTableBody');
+  if (!tbody) return;
+
+  if (!certificates || certificates.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:28px;color:var(--color-text-muted)">No certificates found matching criteria.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = certificates.map((c) => {
+    const isValid = c.verification_status === 'VALID';
+    const statusBadge = isValid
+      ? '<span style="background:rgba(16,185,129,0.15);color:#10B981;font-weight:700;padding:4px 10px;border-radius:999px;font-size:0.75rem">VALID</span>'
+      : '<span style="background:rgba(239,68,68,0.15);color:#EF4444;font-weight:700;padding:4px 10px;border-radius:999px;font-size:0.75rem">REVOKED</span>';
+
+    const issuedDate = c.issued_at
+      ? new Date(c.issued_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '—';
+
+    const verifyUrl = `/verify/${encodeURIComponent(c.certificate_id)}`;
+    const downloadUrl = `/api/public/certificate/${encodeURIComponent(c.certificate_id)}`;
+
+    return `
+      <tr style="border-bottom:1px solid var(--color-light-border);transition:background 0.15s ease">
+        <td style="padding:12px;font-family:monospace;font-weight:600;color:var(--color-navy)">
+          ${escapeHtml(c.certificate_id)}
+        </td>
+        <td style="padding:12px;font-weight:500">
+          ${escapeHtml(c.student_name || 'Candidate')}
+        </td>
+        <td style="padding:12px;color:var(--color-text-muted)">
+          ${escapeHtml(c.exam_title || 'Assessment')}
+        </td>
+        <td style="padding:12px;font-weight:600">
+          ${c.score} / ${c.total_marks} (${Number(c.percentage).toFixed(1)}%)
+        </td>
+        <td style="padding:12px;font-weight:700;color:var(--color-gold)">
+          ${c.scholarship_pct}%
+        </td>
+        <td style="padding:12px;color:var(--color-text-muted)">
+          ${issuedDate}
+        </td>
+        <td style="padding:12px">
+          ${statusBadge}
+        </td>
+        <td style="padding:12px;text-align:right">
+          <div style="display:inline-flex;gap:6px;justify-content:flex-end">
+            <a href="${verifyUrl}" target="_blank" class="btn small ghost" title="Verify Publicly" style="padding:4px 8px;font-size:0.75rem">
+              🔍 Verify
+            </a>
+            ${isValid ? `
+              <a href="${downloadUrl}" download class="btn small secondary" title="Download PDF" style="padding:4px 8px;font-size:0.75rem">
+                ⬇ PDF
+              </a>
+              <button onclick="openRevokeCertModal('${escapeHtml(c.certificate_id)}')" class="btn small" title="Revoke Certificate" style="padding:4px 8px;font-size:0.75rem;background:#FEE2E2;color:#DC2626;border-color:#FCA5A5">
+                Revoke
+              </button>
+            ` : `
+              <span style="font-size:0.75rem;color:#9CA3AF;padding:4px">No actions</span>
+            `}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updateCertPagination(pagination) {
+  const info = document.getElementById('certsPaginationInfo');
+  const prevBtn = document.getElementById('btnPrevCerts');
+  const nextBtn = document.getElementById('btnNextCerts');
+
+  const page = pagination.page || 1;
+  const total = pagination.total || 0;
+  const limit = pagination.limit || 15;
+  const totalPages = pagination.totalPages || 1;
+
+  const start = total === 0 ? 0 : (page - 1) * limit + 1;
+  const end = Math.min(page * limit, total);
+
+  if (info) info.textContent = `Showing ${start}–${end} of ${total} certificates`;
+  if (prevBtn) prevBtn.disabled = page <= 1;
+  if (nextBtn) nextBtn.disabled = page >= totalPages;
+}
+
+function openRevokeCertModal(certificateId) {
+  certToRevoke = certificateId;
+  const modal = document.getElementById('revokeCertModal');
+  const idDisplay = document.getElementById('revokeCertIdDisplay');
+  const reasonInput = document.getElementById('revokeReasonInput');
+  const errBox = document.getElementById('revokeCertErr');
+
+  if (idDisplay) idDisplay.value = certificateId;
+  if (reasonInput) reasonInput.value = '';
+  if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeRevokeCertModal() {
+  certToRevoke = null;
+  const modal = document.getElementById('revokeCertModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function handleConfirmRevoke() {
+  if (!certToRevoke) return;
+  const reasonInput = document.getElementById('revokeReasonInput');
+  const errBox = document.getElementById('revokeCertErr');
+  const reason = reasonInput ? reasonInput.value.trim() : '';
+
+  if (!reason || reason.length < 3) {
+    if (errBox) {
+      errBox.textContent = 'Please provide a valid revocation reason (at least 3 characters).';
+      errBox.style.display = 'block';
+    }
+    return;
+  }
+
+  const isSuperAdmin = currentUser && currentUser.role === 'SUPER_ADMIN';
+  const endpoint = isSuperAdmin
+    ? `/api/admin/certificates/${encodeURIComponent(certToRevoke)}/revoke`
+    : `/api/organization/certificates/${encodeURIComponent(certToRevoke)}/revoke`;
+
+  try {
+    await aapi(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+
+    closeRevokeCertModal();
+    alert('Certificate revoked successfully.');
+    loadCertificates(currentCertPage);
+  } catch (err) {
+    if (errBox) {
+      errBox.textContent = err.message || 'Failed to revoke certificate';
+      errBox.style.display = 'block';
+    }
+  }
+}
+
+// Bind Certificate event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  const refreshBtn = document.getElementById('btnRefreshCerts');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => loadCertificates(currentCertPage));
+
+  const searchInput = document.getElementById('certSearchInput');
+  if (searchInput) {
+    let debounce;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => loadCertificates(1), 300);
+    });
+  }
+
+  const statusFilter = document.getElementById('certStatusFilter');
+  if (statusFilter) statusFilter.addEventListener('change', () => loadCertificates(1));
+
+  const prevBtn = document.getElementById('btnPrevCerts');
+  if (prevBtn) prevBtn.addEventListener('click', () => {
+    if (currentCertPage > 1) loadCertificates(currentCertPage - 1);
+  });
+
+  const nextBtn = document.getElementById('btnNextCerts');
+  if (nextBtn) nextBtn.addEventListener('click', () => {
+    if (currentCertPage < totalCertPages) loadCertificates(currentCertPage + 1);
+  });
+
+  const closeModalBtn = document.getElementById('closeRevokeCertModalBtn');
+  if (closeModalBtn) closeModalBtn.addEventListener('click', closeRevokeCertModal);
+
+  const cancelModalBtn = document.getElementById('cancelRevokeCertBtn');
+  if (cancelModalBtn) cancelModalBtn.addEventListener('click', closeRevokeCertModal);
+
+  const confirmModalBtn = document.getElementById('confirmRevokeCertBtn');
+  if (confirmModalBtn) confirmModalBtn.addEventListener('click', handleConfirmRevoke);
 });

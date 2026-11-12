@@ -115,6 +115,9 @@
           <button class="tab" data-tab="notifications" id="tab-notifications" style="display:none">
             <span class="nav-icon">&#128365;</span> Notifications & Emails
           </button>
+          <button class="tab" data-tab="certificates" id="tab-certificates" style="display:none">
+            <span class="nav-icon">&#128220;</span> Certificates
+          </button>
         </div>
       </div>
 
@@ -1718,6 +1721,90 @@
         </div>
       </div>
 
+      <!-- =====================================================================
+           SCREEN 24: DIGITAL CERTIFICATES & VERIFICATION (Day 24)
+           ===================================================================== -->
+      <div class="tabpane card" id="pane-certificates" style="display:none">
+        <div class="section-title-wrap" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px">
+          <div>
+            <h2 style="font-family:var(--font-display);font-size:1.8rem;margin:0 0 6px;color:var(--color-navy)">Digital Certificates & Verification Registry</h2>
+            <p style="margin:0;font-size:0.9rem;color:var(--color-text-muted)">
+              Cryptographically signed credentials, QR code verification, revocation control, and audit history.
+            </p>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <button id="btnRefreshCerts" class="btn secondary" style="margin:0;padding:8px 16px;font-size:0.85rem">
+              <span>&#8635; Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <div class="kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px">
+          <div class="card" style="margin:0;padding:18px;border:1px solid var(--color-light-border);border-radius:10px;background:#fff">
+            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--color-text-muted)">Total Issued</div>
+            <div id="kpiTotalCerts" style="font-family:var(--font-display);font-size:1.8rem;font-weight:700;color:var(--color-navy);margin-top:4px">0</div>
+            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-top:2px">Official credentials</div>
+          </div>
+          <div class="card" style="margin:0;padding:18px;border:1px solid var(--color-light-border);border-radius:10px;background:#fff">
+            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--color-text-muted)">Valid & Active</div>
+            <div id="kpiValidCerts" style="font-family:var(--font-display);font-size:1.8rem;font-weight:700;color:#10B981;margin-top:4px">0</div>
+            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-top:2px">Verified authentic</div>
+          </div>
+          <div class="card" style="margin:0;padding:18px;border:1px solid var(--color-light-border);border-radius:10px;background:#fff">
+            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:var(--color-text-muted)">Revoked</div>
+            <div id="kpiRevokedCerts" style="font-family:var(--font-display);font-size:1.8rem;font-weight:700;color:#EF4444;margin-top:4px">0</div>
+            <div style="font-size:0.75rem;color:var(--color-text-muted);margin-top:2px">Nullified credentials</div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Controls -->
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;background:#FAFAFA;padding:14px;border-radius:8px;border:1px solid var(--color-light-border)">
+          <div style="flex:1;min-width:240px">
+            <input type="text" id="certSearchInput" placeholder="Search by Certificate ID or Student Name..." style="width:100%;padding:8px 12px;border:1px solid var(--color-light-border);border-radius:6px;font-size:0.85rem">
+          </div>
+          <div>
+            <select id="certStatusFilter" style="padding:8px 12px;border:1px solid var(--color-light-border);border-radius:6px;font-size:0.85rem">
+              <option value="ALL">All Statuses</option>
+              <option value="VALID">Valid Only</option>
+              <option value="REVOKED">Revoked Only</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Certificates Table -->
+        <div class="table-wrap" style="overflow-x:auto">
+          <table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.85rem">
+            <thead>
+              <tr style="border-bottom:2px solid var(--color-light-border);text-align:left;color:var(--color-navy)">
+                <th style="padding:10px 12px">Certificate ID</th>
+                <th style="padding:10px 12px">Candidate</th>
+                <th style="padding:10px 12px">Exam Program</th>
+                <th style="padding:10px 12px">Score</th>
+                <th style="padding:10px 12px">Scholarship</th>
+                <th style="padding:10px 12px">Issue Date</th>
+                <th style="padding:10px 12px">Status</th>
+                <th style="padding:10px 12px;text-align:right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="certificatesTableBody">
+              <tr>
+                <td colspan="8" style="text-align:center;padding:24px;color:var(--color-text-muted)">Loading certificate registry...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div id="certsPagination" style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:0.85rem;color:var(--color-text-muted)">
+          <span id="certsPaginationInfo">Showing 0 of 0 certificates</span>
+          <div style="display:flex;gap:6px">
+            <button id="btnPrevCerts" class="btn small" disabled>&larr; Previous</button>
+            <button id="btnNextCerts" class="btn small" disabled>Next &rarr;</button>
+          </div>
+        </div>
+      </div>
+
     </main>
   </div>
 
@@ -2008,6 +2095,33 @@
         <button id="closeQModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
       </div>
       <div id="qModalBody"></div>
+    </div>
+  </div>
+
+
+  <!-- Revoke Certificate Modal -->
+  <div id="revokeCertModal" class="modal-backdrop" style="display:none">
+    <div class="card" style="max-width:520px;margin:50px auto;background:#fff;padding:24px;border-radius:12px;box-shadow:0 20px 48px rgba(0,0,0,0.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--color-light-border);padding-bottom:12px;margin-bottom:16px">
+        <h2 style="margin:0;font-family:var(--font-display);font-size:1.4rem;color:#EF4444">&#9888; Revoke Digital Certificate</h2>
+        <button id="closeRevokeCertModalBtn" class="btn small ghost" style="margin:0;font-size:18px">&times;</button>
+      </div>
+      <div id="revokeCertErr" class="err" style="display:none;margin-bottom:14px;color:#EF4444;font-size:0.85rem"></div>
+      <p style="font-size:0.85rem;color:var(--color-text-muted);margin-bottom:14px">
+        Revoking a credential permanently marks it invalid on public verification queries and invalidates the cached PDF. This action is audited.
+      </p>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px">Certificate ID</label>
+        <input type="text" id="revokeCertIdDisplay" readonly style="width:100%;padding:8px 12px;background:#F3F4F6;border:1px solid var(--color-light-border);border-radius:6px;font-family:monospace">
+      </div>
+      <div style="margin-bottom:18px">
+        <label for="revokeReasonInput" style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px">Mandatory Revocation Reason <span style="color:#EF4444">*</span></label>
+        <textarea id="revokeReasonInput" placeholder="Specify authoritative reason (e.g. Assessment integrity violation, administrative data correction)..." rows="3" style="width:100%;padding:8px 12px;border:1px solid var(--color-light-border);border-radius:6px;font-size:0.85rem;resize:vertical"></textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <button id="cancelRevokeCertBtn" class="btn secondary" style="padding:8px 16px">Cancel</button>
+        <button id="confirmRevokeCertBtn" class="btn" style="background:#EF4444;border-color:#EF4444;color:#fff;padding:8px 18px">Confirm Revocation</button>
+      </div>
     </div>
   </div>
 

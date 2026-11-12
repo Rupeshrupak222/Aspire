@@ -53,6 +53,13 @@ const {
   updatePreferencesSchema,
   deliveryIdParamSchema
 } = require('../validation/notification.schemas');
+const certService = require('../services/certificate/certificate.service');
+const {
+  certificateParamSchema,
+  revokeCertificateSchema,
+  reissueCertificateSchema,
+  listCertificatesQuerySchema
+} = require('../validation/certificate.schemas');
 
 // Memory storage for file uploads (max 2MB)
 const upload = multer({
@@ -1065,6 +1072,115 @@ router.post(
         success: true,
         data: result,
         message: 'Notification delivery retry scheduled successfully'
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ============================================================================
+// DAY 24: DIGITAL CERTIFICATE VERIFICATION & CREDENTIAL MANAGEMENT
+// ============================================================================
+
+/**
+ * GET /api/organization/certificates
+ * Lists tenant-scoped digital certificates with filtering and pagination.
+ */
+router.get(
+  '/certificates',
+  requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.EXAMS_READ, PERMISSIONS.ORGANIZATIONS_READ),
+  validate({ query: listCertificatesQuerySchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.role === ROLES.SUPER_ADMIN ? (req.query.organizationId || null) : req.user.organization_id;
+      const result = certService.listCertificates({
+        organizationId: orgId,
+        examId: req.query.examId,
+        studentId: req.query.studentId,
+        status: req.query.status,
+        search: req.query.search,
+        page: req.query.page,
+        limit: req.query.limit
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/organization/certificates/:certificateId
+ * Retrieves certificate detail and verification event audit trail.
+ */
+router.get(
+  '/certificates/:certificateId',
+  requirePermission(PERMISSIONS.ANALYTICS_READ, PERMISSIONS.EXAMS_READ, PERMISSIONS.ORGANIZATIONS_READ),
+  validate({ params: certificateParamSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.role === ROLES.SUPER_ADMIN ? null : req.user.organization_id;
+      const cert = certService.getCertificateById(req.params.certificateId, orgId);
+      if (!cert) return next(new NotFoundError('Certificate not found'));
+      const history = certService.getVerificationHistory(req.params.certificateId, orgId);
+      res.json({ success: true, data: { certificate: cert, history } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/organization/certificates/:certificateId/revoke
+ * Revokes a certificate with a mandatory reason. Invalidator of PDF cache.
+ */
+router.post(
+  '/certificates/:certificateId/revoke',
+  requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE, PERMISSIONS.EXAMS_UPDATE),
+  validate({ params: certificateParamSchema, body: revokeCertificateSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.role === ROLES.SUPER_ADMIN ? null : req.user.organization_id;
+      const updated = certService.revokeCertificate({
+        certificateId: req.params.certificateId,
+        organizationId: orgId,
+        reason: req.body.reason,
+        revokedByUserId: req.user.id
+      });
+      res.json({
+        success: true,
+        data: updated,
+        message: 'Certificate successfully revoked'
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/organization/certificates/:certificateId/reissue
+ * Reissues a corrected certificate after revocation.
+ */
+router.post(
+  '/certificates/:certificateId/reissue',
+  requirePermission(PERMISSIONS.ORGANIZATIONS_UPDATE, PERMISSIONS.EXAMS_UPDATE),
+  validate({ params: certificateParamSchema, body: reissueCertificateSchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.user.role === ROLES.SUPER_ADMIN ? null : req.user.organization_id;
+      const reissued = certService.reissueCertificate({
+        oldCertificateId: req.params.certificateId,
+        organizationId: orgId,
+        reason: req.body.reason,
+        modifiedData: req.body,
+        actorId: req.user.id
+      });
+      res.json({
+        success: true,
+        data: reissued,
+        message: 'Certificate successfully reissued'
       });
     } catch (err) {
       next(err);

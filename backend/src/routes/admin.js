@@ -76,6 +76,13 @@ const {
 const notificationDeliveryService = require('../services/notifications/notification-delivery.service');
 const { getProviderStatus } = require('../services/notifications/email.service');
 const { listNotificationsQuerySchema, deliveryIdParamSchema } = require('../validation/notification.schemas');
+const certService = require('../services/certificate/certificate.service');
+const {
+  certificateParamSchema,
+  revokeCertificateSchema,
+  reissueCertificateSchema,
+  listCertificatesQuerySchema
+} = require('../validation/certificate.schemas');
 const metrics = require('../utils/metrics');
 const {
   createExamSchema,
@@ -1725,6 +1732,112 @@ router.post(
         success: true,
         data: result,
         message: 'Notification delivery retry scheduled successfully'
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ============================================================================
+// DAY 24: SUPER ADMIN DIGITAL CERTIFICATE MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * GET /api/admin/certificates
+ * Platform-wide certificate listing across all organizations.
+ */
+router.get(
+  '/certificates',
+  requireRole(ROLES.SUPER_ADMIN),
+  validate({ query: listCertificatesQuerySchema }),
+  (req, res, next) => {
+    try {
+      const orgId = req.query.organizationId ? parseInt(req.query.organizationId, 10) : null;
+      const result = certService.listCertificates({
+        organizationId: orgId,
+        examId: req.query.examId,
+        studentId: req.query.studentId,
+        status: req.query.status,
+        search: req.query.search,
+        page: req.query.page,
+        limit: req.query.limit
+      });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * GET /api/admin/certificates/:certificateId
+ * Full certificate detail and verification event trail across any organization.
+ */
+router.get(
+  '/certificates/:certificateId',
+  requireRole(ROLES.SUPER_ADMIN),
+  validate({ params: certificateParamSchema }),
+  (req, res, next) => {
+    try {
+      const cert = certService.getCertificateById(req.params.certificateId, null);
+      if (!cert) return next(new NotFoundError('Certificate not found'));
+      const history = certService.getVerificationHistory(req.params.certificateId, null);
+      res.json({ success: true, data: { certificate: cert, history } });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/admin/certificates/:certificateId/revoke
+ * Globally revoke a certificate with an administrative reason.
+ */
+router.post(
+  '/certificates/:certificateId/revoke',
+  requireRole(ROLES.SUPER_ADMIN),
+  validate({ params: certificateParamSchema, body: revokeCertificateSchema }),
+  (req, res, next) => {
+    try {
+      const updated = certService.revokeCertificate({
+        certificateId: req.params.certificateId,
+        organizationId: null,
+        reason: req.body.reason,
+        revokedByUserId: req.user.id
+      });
+      res.json({
+        success: true,
+        data: updated,
+        message: 'Certificate successfully revoked by Super Admin'
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * POST /api/admin/certificates/:certificateId/reissue
+ * Globally reissue a certificate.
+ */
+router.post(
+  '/certificates/:certificateId/reissue',
+  requireRole(ROLES.SUPER_ADMIN),
+  validate({ params: certificateParamSchema, body: reissueCertificateSchema }),
+  (req, res, next) => {
+    try {
+      const reissued = certService.reissueCertificate({
+        oldCertificateId: req.params.certificateId,
+        organizationId: null,
+        reason: req.body.reason,
+        modifiedData: req.body,
+        actorId: req.user.id
+      });
+      res.json({
+        success: true,
+        data: reissued,
+        message: 'Certificate successfully reissued by Super Admin'
       });
     } catch (err) {
       next(err);

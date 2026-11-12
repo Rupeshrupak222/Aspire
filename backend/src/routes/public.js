@@ -11,8 +11,9 @@ const { registerSchema } = require('../validation/student.schemas');
 const { attemptTokenParamSchema, heartbeatSchema, submitSchema, codeExecutionSchema, codeSubmissionParamsSchema } = require('../validation/attempt.schemas');
 const { proctoringBatchSchema } = require('../validation/proctoring.schemas');
 const { extendedHeartbeatSchema, progressSyncSchema } = require('../validation/recovery.schemas');
-const { certificateParamSchema } = require('../validation/certificate.schemas');
+const { certificateParamSchema, verifyCertificateParamSchema } = require('../validation/certificate.schemas');
 const { registerLimiter, submitLimiter, certificateLimiter, codeExecutionLimiter, proctoringLimiter, recoverySyncLimiter } = require('../security/rate-limit');
+const certService = require('../services/certificate/certificate.service');
 const examService = require('../services/exam.service');
 const shuffleService = require('../services/shuffle.service');
 const snapshotService = require('../services/snapshot.service');
@@ -873,28 +874,82 @@ router.post('/attempt/:token/submit', submitLimiter, validate({ params: attemptT
 }));
 
 // Download the branded PDF certificate
-router.get('/certificate/:certificateId', certificateLimiter, validate({ params: certificateParamSchema }), asyncHandler(async (req, res, next) => {
+const downloadCertHandler = asyncHandler(async (req, res, next) => {
+  const certificateId = req.params.certificateId;
+  
+  // Check if revoked in certificates table
+  const certRow = db.prepare('SELECT * FROM certificates WHERE certificate_id = ?').get(certificateId);
+  if (certRow && certRow.verification_status === 'REVOKED') {
+    return res.status(410).json({
+      status: 'REVOKED',
+      error: {
+        code: 'CERTIFICATE_REVOKED',
+        message: 'This certificate has been revoked and is no longer available for download.'
+      }
+    });
+  }
+
   const att = db.prepare(`SELECT a.*, s.name AS student_name FROM attempts a
                           JOIN students s ON s.id = a.student_id
-                          WHERE a.certificate_id = ? AND a.status = 'submitted'`).get(req.params.certificateId);
-  if (!att) return next(new NotFoundError('Certificate not found'));
+                          WHERE a.certificate_id = ? AND a.status = 'submitted'`).get(certificateId);
+  if (!att && !certRow) return next(new NotFoundError('Certificate not found'));
+
+  const studentName = (certRow && certRow.student_name) || (att && att.student_name) || 'Candidate';
+  const percentage = (certRow && certRow.percentage) || (att && att.percentage) || 0;
+  const scholarshipPct = (certRow && certRow.scholarship_pct) || (att && att.scholarship_pct) || 0;
+  const organizationId = (certRow && certRow.organization_id) || (att && att.organization_id) || null;
+  const submittedAt = (certRow && certRow.issued_at) || (att && att.submitted_at) || new Date().toISOString();
+
   const cfg = getConfig();
   try {
     const pdf = await generateCertificate({
-      name: att.student_name,
-      percentage: att.percentage,
-      scholarshipPct: att.scholarship_pct,
-      certificateId: att.certificate_id,
-      organizationId: att.organization_id || null,
-      dateStr: new Date(att.submitted_at + 'Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
+      name: studentName,
+      percentage,
+      scholarshipPct,
+      certificateId,
+      organizationId,
+      dateStr: new Date(submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
       brandName: cfg.brand_name || 'Adyapan'
     });
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${att.certificate_id}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${certificateId}.pdf"`);
     res.send(pdf);
   } catch (e) {
     next(new AppError('Failed to generate certificate', 500, 'CERTIFICATE_GENERATION_FAILED'));
   }
-}));
+});
+
+router.get('/certificate/:certificateId', certificateLimiter, validate({ params: certificateParamSchema }), downloadCertHandler);
+router.get('/public/certificate/:certificateId', certificateLimiter, validate({ params: certificateParamSchema }), downloadCertHandler);
+
+// Public Certificate Verification Endpoint (Zero-Login Public Verification)
+const verificationHandler = asyncHandler(async (req, res, next) => {
+  const certificateId = req.params.certificateId;
+  const result = certService.verifyCertificate(certificateId, 'public_api');
+
+  if (result.status === 'NOT_FOUND') {
+    return res.status(404).json({
+      status: 'NOT_FOUND',
+      data: result
+    });
+  }
+
+  // Set appropriate cache-control
+  if (result.status === 'VALID') {
+    res.setHeader('Cache-Control', 'public, max-age=60');
+  } else {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  }
+
+  res.json({
+    status: result.status,
+    data: result
+  });
+});
+
+router.get('/certificates/verify/:certificateId', certificateLimiter, validate({ params: verifyCertificateParamSchema }), verificationHandler);
+router.get('/public/certificates/verify/:certificateId', certificateLimiter, validate({ params: verifyCertificateParamSchema }), verificationHandler);
+router.get('/verify/:certificateId', certificateLimiter, validate({ params: verifyCertificateParamSchema }), verificationHandler);
+router.get('/public/verify/:certificateId', certificateLimiter, validate({ params: verifyCertificateParamSchema }), verificationHandler);
 
 module.exports = router;

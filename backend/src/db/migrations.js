@@ -1131,6 +1131,145 @@ function runMigrations(db) {
           CREATE INDEX IF NOT EXISTS idx_exam_cand_inv_token ON exam_candidate_invitations(invitation_token);
         `);
       }
+    },
+    {
+      version: '018_certificate_verification',
+      up: (d) => {
+        // 1. Digital Certificates table (authoritative credential store)
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS certificates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            certificate_id TEXT NOT NULL UNIQUE,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
+            attempt_id INTEGER REFERENCES attempts(id) ON DELETE SET NULL,
+            student_id INTEGER REFERENCES students(id) ON DELETE SET NULL,
+            exam_id INTEGER REFERENCES exams(id) ON DELETE SET NULL,
+            student_name TEXT NOT NULL,
+            exam_title TEXT NOT NULL,
+            score REAL NOT NULL DEFAULT 0,
+            total_marks REAL NOT NULL DEFAULT 100,
+            percentage REAL NOT NULL DEFAULT 0,
+            scholarship_pct REAL NOT NULL DEFAULT 0,
+            verification_status TEXT NOT NULL DEFAULT 'VALID' CHECK(verification_status IN ('VALID', 'REVOKED', 'EXPIRED')),
+            payload_json TEXT NOT NULL,
+            payload_hash TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            signing_key_id TEXT NOT NULL DEFAULT 'k2026_1',
+            verification_url TEXT NOT NULL,
+            issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+            revoked_at TEXT,
+            revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            revocation_reason TEXT,
+            reissued_as_certificate_id TEXT,
+            reissued_from_certificate_id TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_certificates_cert_id ON certificates(certificate_id);
+          CREATE INDEX IF NOT EXISTS idx_certificates_org_status ON certificates(organization_id, verification_status);
+          CREATE INDEX IF NOT EXISTS idx_certificates_student ON certificates(student_id);
+          CREATE INDEX IF NOT EXISTS idx_certificates_attempt ON certificates(attempt_id);
+          CREATE INDEX IF NOT EXISTS idx_certificates_issued ON certificates(issued_at);
+        `);
+
+        // 2. Certificate verification and audit events
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS certificate_verification_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            certificate_id TEXT NOT NULL,
+            event_type TEXT NOT NULL CHECK(event_type IN ('CERTIFICATE_ISSUED', 'CERTIFICATE_VERIFIED', 'CERTIFICATE_REVOKED', 'CERTIFICATE_REISSUED', 'SIGNATURE_VALIDATION_FAILED')),
+            verification_result TEXT NOT NULL,
+            verifier_source TEXT,
+            safe_metadata_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_cert_verif_events_cert ON certificate_verification_events(certificate_id);
+          CREATE INDEX IF NOT EXISTS idx_cert_verif_events_type ON certificate_verification_events(event_type, created_at);
+        `);
+
+        // 3. Backfill existing attempts with certificate_id into certificates table
+        try {
+          const certCrypto = require('../utils/certificate-crypto');
+          const existingAttempts = d.prepare(`
+            SELECT a.id as attempt_id, a.certificate_id, a.organization_id, a.student_id, a.exam_id,
+                   a.score, a.total_marks, a.percentage, a.scholarship_pct, a.submitted_at,
+                   s.name as student_name, e.name as exam_title
+            FROM attempts a
+            LEFT JOIN students s ON s.id = a.student_id
+            LEFT JOIN exams e ON e.id = a.exam_id
+            WHERE a.certificate_id IS NOT NULL AND a.status = 'submitted'
+          `).all();
+
+          const insertCertStmt = d.prepare(`
+            INSERT OR IGNORE INTO certificates (
+              certificate_id, organization_id, attempt_id, student_id, exam_id,
+              student_name, exam_title, score, total_marks, percentage, scholarship_pct,
+              verification_status, payload_json, payload_hash, signature, signing_key_id,
+              verification_url, issued_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VALID', ?, ?, ?, ?, ?, ?)
+          `);
+
+          const insertEventStmt = d.prepare(`
+            INSERT INTO certificate_verification_events (
+              certificate_id, event_type, verification_result, verifier_source, safe_metadata_json
+            ) VALUES (?, 'CERTIFICATE_ISSUED', 'VALID', 'migration_backfill', '{}')
+          `);
+
+          const baseUrl = process.env.CERTIFICATE_PUBLIC_BASE_URL || process.env.APP_BASE_URL || 'https://aspire.adyapan.com';
+
+          for (const row of existingAttempts) {
+            const studentName = row.student_name || 'Candidate';
+            const examTitle = row.exam_title || 'Scholarship Assessment';
+            const issuedAt = row.submitted_at ? new Date(row.submitted_at + 'Z').toISOString() : new Date().toISOString();
+
+            const payload = certCrypto.createCertificatePayload({
+              certificateId: row.certificate_id,
+              organizationId: row.organization_id || null,
+              studentId: row.student_id || null,
+              studentName,
+              examId: row.exam_id || null,
+              examTitle,
+              finalScore: row.score || 0,
+              maximumScore: row.total_marks || 100,
+              scorePercentage: row.percentage || 0,
+              scholarshipPercentage: row.scholarship_pct || 0,
+              issuedAt,
+              certificateVersion: 'v1'
+            });
+
+            const payloadJson = certCrypto.canonicalizePayload(payload);
+            const payloadHash = certCrypto.createPayloadHash(payload);
+            const { signature, signingKeyId } = certCrypto.signCertificatePayload(payload);
+            const verificationUrl = `${baseUrl}/verify/${row.certificate_id}`;
+
+            const res = insertCertStmt.run(
+              row.certificate_id,
+              row.organization_id || null,
+              row.attempt_id,
+              row.student_id || null,
+              row.exam_id || null,
+              studentName,
+              examTitle,
+              row.score || 0,
+              row.total_marks || 100,
+              row.percentage || 0,
+              row.scholarship_pct || 0,
+              payloadJson,
+              payloadHash,
+              signature,
+              signingKeyId,
+              verificationUrl,
+              issuedAt
+            );
+
+            if (res && res.changes > 0) {
+              insertEventStmt.run(row.certificate_id);
+            }
+          }
+        } catch (backfillErr) {
+          // Gracefully continue if backfill encounters legacy anomalies
+        }
+      }
     }
   ];
 

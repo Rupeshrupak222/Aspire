@@ -393,14 +393,24 @@
         line.style.width = `${totalWidth}px`;
         line.style.right = 'auto';
 
-        // Vertically center line precisely halfway between description text and icon circles
-        const descEl = document.querySelector('.step-desc');
-        const circleEl = document.querySelector('.step-icon-circle');
-        if (descEl && circleEl) {
-          const descRect = descEl.getBoundingClientRect();
-          const circleRect = circleEl.getBoundingClientRect();
-          const midY = (descRect.bottom + circleRect.top) / 2 - wrapRect.top - 1;
-          line.style.top = `${midY}px`;
+        // Vertically center line precisely halfway between description text and icon circles across all steps
+        const descEls = document.querySelectorAll('.step-desc');
+        const circleEls = document.querySelectorAll('.step-icon-circle');
+        if (descEls.length && circleEls.length) {
+          let maxDescBottom = 0;
+          descEls.forEach(el => {
+            const r = el.getBoundingClientRect();
+            if (r.bottom > maxDescBottom) maxDescBottom = r.bottom;
+          });
+          let minCircleTop = Infinity;
+          circleEls.forEach(el => {
+            const r = el.getBoundingClientRect();
+            if (r.top < minCircleTop) minCircleTop = r.top;
+          });
+          if (maxDescBottom > 0 && minCircleTop < Infinity) {
+            const midY = (maxDescBottom + minCircleTop) / 2 - wrapRect.top - 1;
+            line.style.top = `${midY}px`;
+          }
         }
       } else {
         line.style.left = '';
@@ -412,6 +422,10 @@
 
     alignLine();
     window.addEventListener('resize', alignLine, { passive: true });
+    window.addEventListener('load', alignLine, { passive: true });
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(alignLine);
+    }
 
     if (!section || !lineProgress) return;
 

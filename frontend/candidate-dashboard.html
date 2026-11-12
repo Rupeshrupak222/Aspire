@@ -384,14 +384,23 @@
             <img src="/assets/logo/aspire-submark.png" alt="Official Seal" style="width:64px;height:64px;object-fit:contain">
           </div>
           <div class="cert-gold-seal" aria-hidden="true" style="display:none">★</div>
-          <div style="font-size:0.8rem;color:var(--color-text-secondary);margin-top:10px">
-            Verified Certificate ID: <strong id="certDisplayId" style="color:var(--color-midnight)">—</strong>
+          <div style="font-size:0.85rem;color:var(--color-text-secondary);margin-top:10px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap">
+            <span>Verified Certificate ID: <strong id="certDisplayId" style="color:var(--color-midnight)">—</strong></span>
+            <span id="certStatusBadge" style="background:#10B981;color:#fff;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:999px;letter-spacing:0.05em">VALID</span>
           </div>
-          <div style="margin-top:24px">
+          <div style="margin-top:24px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap">
             <a id="certDownloadLink" class="btn" href="#" download style="margin-top:0">
               <span>Download Official PDF</span>
               <span aria-hidden="true">↓</span>
             </a>
+            <a id="certVerifyLink" class="btn" href="#" target="_blank" style="background:var(--color-midnight);color:var(--color-gold);border:1px solid var(--color-gold);margin-top:0">
+              <span>Verify Credential</span>
+              <span aria-hidden="true">↗</span>
+            </a>
+            <button id="copyCertLinkBtn" type="button" class="btn" style="background:#F3F4F6;color:#1F2937;border:1px solid #D1D5DB;margin-top:0">
+              <span>Copy Link</span>
+              <span aria-hidden="true">📋</span>
+            </button>
           </div>
         </div>
       </section>
