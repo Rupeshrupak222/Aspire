@@ -8,12 +8,22 @@ const { getRedisConnection, closeRedisConnections } = require('../config/redis')
 const { QUEUE_NAME } = require('../queues/code-execution.queue');
 const { processCodeJob } = require('./code-execution.processor');
 const logger = require('../utils/logger');
+const { workerHeartbeatService } = require('../services/monitoring/worker-heartbeat.service');
 
 let workerInstance = null;
+let stopHeartbeat = null;
 
 function createWorker() {
   const concurrency = parseInt(process.env.CODE_EXECUTION_WORKER_CONCURRENCY, 10) || 5;
   const connection = getRedisConnection('worker');
+
+  // Start periodic heartbeat
+  if (!stopHeartbeat) {
+    stopHeartbeat = workerHeartbeatService.startHeartbeat({
+      workerName: 'code-execution-worker',
+      metadata: { concurrency, queue: QUEUE_NAME }
+    });
+  }
 
   const worker = new Worker(
     QUEUE_NAME,
@@ -61,6 +71,10 @@ function createWorker() {
 
 async function shutdown(signal = 'SIGTERM') {
   logger.info({ signal }, 'Graceful shutdown initiated for code execution worker...');
+  if (stopHeartbeat) {
+    try { stopHeartbeat(); } catch {}
+    stopHeartbeat = null;
+  }
   if (workerInstance) {
     try {
       await workerInstance.close();

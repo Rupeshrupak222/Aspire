@@ -7,11 +7,13 @@ const { Worker } = require('bullmq');
 const { getRedisConnection } = require('../config/redis');
 const { deliverNotification } = require('../services/notifications/notification-delivery.service');
 const logger = require('../utils/logger');
+const { workerHeartbeatService } = require('../services/monitoring/worker-heartbeat.service');
 
 const QUEUE_NAME = process.env.NOTIFICATION_QUEUE_NAME || 'aspire-notification-delivery';
 const CONCURRENCY = parseInt(process.env.NOTIFICATION_WORKER_CONCURRENCY, 10) || 5;
 
 let worker = null;
+let stopHeartbeat = null;
 
 async function processNotificationJob(job) {
   const { deliveryId, recipientEmail, eventType } = job.data;
@@ -60,10 +62,20 @@ function startNotificationWorker() {
   });
 
   logger.info({ queue: QUEUE_NAME, concurrency: CONCURRENCY }, 'Notification worker started');
+  if (!stopHeartbeat) {
+    stopHeartbeat = workerHeartbeatService.startHeartbeat({
+      workerName: 'notification-worker',
+      metadata: { concurrency: CONCURRENCY, queue: QUEUE_NAME }
+    });
+  }
   return worker;
 }
 
 async function stopNotificationWorker() {
+  if (stopHeartbeat) {
+    try { stopHeartbeat(); } catch {}
+    stopHeartbeat = null;
+  }
   if (worker) {
     logger.info('Stopping notification worker gracefully...');
     await worker.close();

@@ -12,9 +12,11 @@ const { processCodeJob } = require('./code-execution.processor');
 const { deliverNotification } = require('../services/notifications/notification-delivery.service');
 const { OUTBOX_STATUS } = require('../services/code-execution/constants');
 const logger = require('../utils/logger');
+const { workerHeartbeatService } = require('../services/monitoring/worker-heartbeat.service');
 
 let loopTimer = null;
 let isRunning = false;
+let stopHeartbeat = null;
 
 /**
  * Dispatch an individual outbox event immediately (e.g. right after SQLite commit).
@@ -317,6 +319,13 @@ function startOutboxPoller(intervalMs = 2000) {
   if (isRunning) return;
   isRunning = true;
 
+  if (!stopHeartbeat) {
+    stopHeartbeat = workerHeartbeatService.startHeartbeat({
+      workerName: 'outbox-dispatcher',
+      metadata: { intervalMs }
+    });
+  }
+
   logger.info({ intervalMs }, 'Starting background Outbox Dispatcher loop...');
   loopTimer = setInterval(async () => {
     try {
@@ -334,6 +343,10 @@ function stopOutboxPoller() {
   if (loopTimer) {
     clearInterval(loopTimer);
     loopTimer = null;
+  }
+  if (stopHeartbeat) {
+    try { stopHeartbeat(); } catch {}
+    stopHeartbeat = null;
   }
   isRunning = false;
   logger.info('Outbox Dispatcher loop stopped');

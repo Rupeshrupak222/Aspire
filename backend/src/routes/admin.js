@@ -10,6 +10,7 @@ const { NotFoundError, ValidationError, AuthorizationError } = require('../error
 const { idParamSchema } = require('../validation/common.schemas');
 const meteringService = require('../services/subscription/metering.service');
 const reconciliationService = require('../services/subscription/reconciliation.service');
+const backupService = require('../services/backup/backup.service');
 const {
   usageTrendsQuerySchema,
   reconcileRequestSchema
@@ -84,6 +85,9 @@ const {
   listCertificatesQuerySchema
 } = require('../validation/certificate.schemas');
 const metrics = require('../utils/metrics');
+const { monitoringService } = require('../services/monitoring/monitoring.service');
+const { healthService } = require('../services/monitoring/health.service');
+const { alertService } = require('../services/monitoring/alert.service');
 const {
   createExamSchema,
   updateExamSchema,
@@ -1844,6 +1848,72 @@ router.post(
     }
   }
 );
+
+/**
+ * ============================================================================
+ * DAY 28 — BACKUP & DISASTER RECOVERY ADMINISTRATIVE API (SUPER_ADMIN ONLY)
+ * ============================================================================
+ */
+
+/**
+ * GET /api/admin/backups
+ * List all available backup archives.
+ */
+router.get('/backups', requireRole(ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const backups = await backupService.listBackups();
+    res.json({ success: true, data: backups });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/admin/backups/:id
+ * Retrieve details and manifest for a specific backup archive.
+ */
+router.get('/backups/:id', requireRole(ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const result = await backupService.verifyBackup(req.params.id);
+    if (!result.valid && result.error && result.error.includes('not found')) {
+      return next(new NotFoundError(`Backup not found: ${req.params.id}`));
+    }
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/backups/create
+ * Trigger on-demand backup generation.
+ */
+router.post('/backups/create', requireRole(ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { type, encrypt, syncCloud } = req.body || {};
+    const result = await backupService.createBackup({
+      type: type || 'full',
+      encrypt: encrypt !== false,
+      syncCloud: Boolean(syncCloud)
+    });
+    res.status(201).json({ success: true, data: result, message: 'Backup created successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/admin/backups/verify/:id
+ * Trigger integrity verification for a specific backup.
+ */
+router.post('/backups/verify/:id', requireRole(ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const result = await backupService.verifyBackup(req.params.id);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = router;
 

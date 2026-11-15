@@ -1017,20 +1017,22 @@ ol {
 
 .process-connecting-line {
   position: absolute;
-  top: 128px;
+  top: 136px;
   left: 0;
   right: auto;
-  width: 91.2%;
+  width: 0;
   max-width: 100%;
   height: 2px;
-  background-color: rgba(8, 9, 11, 0.1);
+  background-color: rgba(8, 9, 11, 0.12);
   z-index: 1;
+  opacity: 0;
+  transition: opacity 0.25s ease;
 }
 
 .process-line-progress {
   height: 100%;
   width: 0;
-  background: linear-gradient(90deg, rgba(8, 9, 11, 0.4) 0%, var(--color-gold-deep) 100%);
+  background: linear-gradient(90deg, var(--color-gold-deep) 0%, var(--color-gold) 50%, var(--color-gold-deep) 100%);
   transition: width 1.2s var(--ease-smooth);
 }
 
@@ -1047,6 +1049,8 @@ ol {
   flex-direction: column;
   align-items: flex-start;
   text-align: left;
+  min-width: 0;
+  overflow: visible;
 }
 
 .step-num-label {
@@ -1066,18 +1070,21 @@ ol {
 }
 
 .step-desc {
-  font-size: 0.775rem;
+  font-size: clamp(0.72rem, 0.85vw, 0.775rem);
   color: var(--color-text-secondary);
   line-height: 1.5;
   margin-bottom: 32px;
   min-height: auto;
-  white-space: nowrap;
-  word-break: keep-all;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  text-wrap: nowrap !important;
+  overflow: visible;
 }
 
 .step-celebrate .step-desc {
   white-space: nowrap !important;
   word-break: keep-all !important;
+  text-wrap: nowrap !important;
 }
 
 .step-icon-circle {

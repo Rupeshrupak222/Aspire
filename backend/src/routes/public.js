@@ -12,6 +12,17 @@ const { attemptTokenParamSchema, heartbeatSchema, submitSchema, codeExecutionSch
 const { proctoringBatchSchema } = require('../validation/proctoring.schemas');
 const { extendedHeartbeatSchema, progressSyncSchema } = require('../validation/recovery.schemas');
 const { certificateParamSchema, verifyCertificateParamSchema } = require('../validation/certificate.schemas');
+const {
+  sendOtpSchema,
+  verifyOtpSchema,
+  sendEmailVerificationSchema,
+  verifyEmailSchema,
+  collegeSearchQuerySchema,
+  campaignAttributionSchema
+} = require('../validation/candidate.schemas');
+const verificationService = require('../services/candidate/verification.service');
+const collegeService = require('../services/candidate/college.service');
+const campaignService = require('../services/candidate/campaign.service');
 const { registerLimiter, submitLimiter, certificateLimiter, codeExecutionLimiter, proctoringLimiter, recoverySyncLimiter } = require('../security/rate-limit');
 const certService = require('../services/certificate/certificate.service');
 const examService = require('../services/exam.service');
@@ -175,9 +186,130 @@ router.get('/config/public', (req, res) => {
   });
 });
 
+// ============================================================================
+// DAY 25: CANDIDATE AUTHENTICATION & VERIFICATION ENDPOINTS
+// ============================================================================
+
+// Send Mobile SMS OTP
+router.post('/auth/candidate/send-otp', registerLimiter, validate({ body: sendOtpSchema }), asyncHandler(async (req, res) => {
+  const result = await verificationService.sendMobileOtp({ phone: req.body.phone });
+  res.json(result);
+}));
+
+// Verify Mobile SMS OTP
+router.post('/auth/candidate/verify-otp', registerLimiter, validate({ body: verifyOtpSchema }), asyncHandler(async (req, res) => {
+  const result = verificationService.verifyMobileOtp({ phone: req.body.phone, otp: req.body.otp });
+  res.json(result);
+}));
+
+// Send Candidate Email Verification Token
+router.post('/auth/candidate/send-verification-email', registerLimiter, validate({ body: sendEmailVerificationSchema }), asyncHandler(async (req, res) => {
+  const result = await verificationService.sendEmailVerification({ email: req.body.email });
+  res.json(result);
+}));
+
+// Verify Candidate Email Token
+router.get('/auth/candidate/verify-email', validate({ query: verifyEmailSchema }), asyncHandler(async (req, res) => {
+  const result = verificationService.verifyEmailToken(req.query.token);
+  if (req.accepts('html') && !req.accepts('json')) {
+    return res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Email Verified — Aspire by Adyapan</title>
+        <style>
+          body { font-family: 'Poppins', -apple-system, sans-serif; background: #08090B; color: #F5F3EF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; }
+          .card { background: #16171D; border: 1px solid rgba(255, 201, 0, 0.4); border-radius: 16px; padding: 40px; max-width: 440px; text-align: center; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+          .badge { width: 56px; height: 56px; border-radius: 50%; background: rgba(34, 197, 94, 0.15); border: 1px solid #22c55e; color: #22c55e; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; margin-bottom: 20px; }
+          h2 { font-size: 24px; color: #FFFFFF; margin: 0 0 12px 0; }
+          p { color: #A1A1AA; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0; }
+          a { display: inline-block; background: #FFC900; color: #08090B; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="badge">✓</div>
+          <h2>Email Verified!</h2>
+          <p>${result.message}</p>
+          <a href="/instructions.html">Continue Assessment →</a>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+  res.json(result);
+}));
+
+// Autocomplete Colleges Catalogue
+router.get('/public/colleges', validate({ query: collegeSearchQuerySchema }), asyncHandler(async (req, res) => {
+  const colleges = collegeService.searchColleges(req.query.q, req.query.limit);
+  res.json({
+    success: true,
+    data: colleges
+  });
+}));
+
+// Record Campaign Attribution
+router.post('/public/campaign/attribution', validate({ body: campaignAttributionSchema }), asyncHandler(async (req, res) => {
+  const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const userAgent = req.headers['user-agent'];
+  const result = campaignService.recordAttribution({
+    studentId: req.body.student_id,
+    attribution: req.body,
+    ip,
+    userAgent
+  });
+  res.json({
+    success: true,
+    recorded: !!result
+  });
+}));
+
+// Day 27: Public Client Error Monitoring Ingestion
+router.post('/public/monitoring/client-errors', registerLimiter, asyncHandler(async (req, res) => {
+  const { message, errorName, stack, category, context } = req.body || {};
+  if (message) {
+    const { errorTrackingService } = require('../services/monitoring/error-tracking.service');
+    errorTrackingService.captureMessage(String(message).slice(0, 500), 'warn', {
+      category: category || 'frontend_client',
+      errorName: String(errorName || 'ClientError').slice(0, 100),
+      clientStack: stack ? String(stack).slice(0, 1000) : undefined,
+      route: req.body.url ? String(req.body.url).slice(0, 200) : undefined,
+      extra: context || {}
+    });
+  }
+  res.json({ success: true, recorded: true });
+}));
+
 // Register a student. Support multi-exam and attempt limits.
-router.post('/register', registerLimiter, validate(registerSchema), (req, res, next) => {
-  const { name, phone: normPhone, email, college, city, grad_year, track, campaign_code, exam_code, exam_id } = req.body;
+router.post('/register', registerLimiter, validate(registerSchema), asyncHandler(async (req, res, next) => {
+  const {
+    name,
+    phone: normPhone,
+    email,
+    college,
+    city,
+    grad_year,
+    graduation_year,
+    degree,
+    track,
+    password,
+    campaign_code,
+    exam_code,
+    exam_id
+  } = req.body;
+
+  const effectiveGradYear = graduation_year || grad_year || null;
+  const effectiveDegree = degree || null;
+  let passwordHash = null;
+  if (password && typeof password === 'string' && password.trim().length >= 8) {
+    try {
+      const { hashPassword } = require('../security/jwt');
+      passwordHash = await hashPassword(password);
+    } catch {}
+  }
 
   // Day 23: Resolve invitation token if provided
   let invitation = null;
@@ -258,6 +390,8 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
 
   const targetExamId = targetExam ? targetExam.id : null;
   const maxAttempts = targetExam ? (targetExam.max_attempts || 1) : 1;
+  const cfg = getConfig();
+  let durationMin = targetExam ? targetExam.duration_minutes : (parseInt(cfg.duration_minutes, 10) || 90);
 
   // Check existing student and attempts
   const student = db.prepare('SELECT * FROM students WHERE phone = ?').get(normPhone);
@@ -271,11 +405,15 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
 
     if (ongoingAtt) {
       // Resume an in-progress attempt
-      const cfg = getConfig();
       return res.json({
         token: ongoingAtt.token,
         resumed: true,
+        student_id: student.id,
+        email_verified: student.email_verified || 0,
+        phone_verified: student.phone_verified || 0,
         expires_at: ongoingAtt.expires_at,
+        duration_minutes: durationMin,
+        question_count: (JSON.parse(ongoingAtt.question_ids_json || '[]')).length,
         test_title: targetExam ? targetExam.name : cfg.test_title
       });
     }
@@ -296,11 +434,9 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
     }
   }
 
-  const cfg = getConfig();
   const codeAllowed = judge0.isConfigured();
 
   let selected, maps, frozenQuestions = null, examSnapshot = null, shuffleSeed = null, shuffleMap = null, snapshotHash = null;
-  let durationMin = targetExam ? targetExam.duration_minutes : (parseInt(cfg.duration_minutes, 10) || 90);
 
   try {
     if (targetExam) {
@@ -333,10 +469,25 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
       db.prepare(`
         UPDATE students SET name = ?, email = COALESCE(?, email), college = COALESCE(?, college),
                             city = COALESCE(?, city), grad_year = COALESCE(?, grad_year),
+                            graduation_year = COALESCE(?, graduation_year), degree = COALESCE(?, degree),
                             track = COALESCE(?, track), campaign_code = COALESCE(?, campaign_code),
+                            password_hash = COALESCE(?, password_hash),
                             organization_id = COALESCE(organization_id, ?)
         WHERE id = ?
-      `).run(name, email || null, college || null, city || null, grad_year || null, track || null, campaign_code || null, assignedOrgId, studentId);
+      `).run(
+        name,
+        email || null,
+        college || null,
+        city || null,
+        effectiveGradYear,
+        effectiveGradYear,
+        effectiveDegree,
+        track || null,
+        campaign_code || null,
+        passwordHash,
+        assignedOrgId,
+        studentId
+      );
     } else {
       // Day 21 Quota Enforcement:
       // A new distinct candidate identity consumes 1 candidate quota unit for the hosting organization.
@@ -352,14 +503,14 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
       });
 
       const ins = db.prepare(`INSERT INTO students
-        (name, phone, email, college, city, grad_year, track, campaign_code, organization_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+        (name, phone, email, college, city, grad_year, graduation_year, degree, track, campaign_code, password_hash, organization_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       const s = ins.run(
         name, normPhone,
         email || null, college || null,
-        city || null, grad_year || null,
-        track || null, campaign_code || null,
-        assignedOrgId
+        city || null, effectiveGradYear, effectiveGradYear,
+        effectiveDegree, track || null, campaign_code || null,
+        passwordHash, assignedOrgId
       );
       studentId = s.lastInsertRowid;
 
@@ -450,14 +601,26 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
       });
     } catch (err) {}
 
-    return { token, expires_at, deadline_at, durationMin };
+    return { token, studentId, expires_at, deadline_at, durationMin };
   });
 
   try {
     const result = executeRegistration();
+    try {
+      const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'];
+      campaignService.recordAttribution({
+        studentId: result.studentId,
+        attribution: req.body,
+        ip,
+        userAgent
+      });
+    } catch (attrErr) {}
+
     res.json({
       token: result.token,
       resumed: false,
+      student_id: result.studentId,
       expires_at: result.expires_at,
       duration_minutes: result.durationMin,
       question_count: selected.length,
@@ -474,7 +637,7 @@ router.post('/register', registerLimiter, validate(registerSchema), (req, res, n
     }
     next(err);
   }
-});
+}));
 
 // Fetch attempt + questions (answers and test cases are NEVER sent)
 router.get('/attempt/:token', validate({ params: attemptTokenParamSchema }), (req, res, next) => {

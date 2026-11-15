@@ -10,7 +10,8 @@ const timerSubmissionService = require('./timer-submission.service');
 const CHANGE_TYPES = Object.freeze({
   MCQ_ANSWER: 'MCQ_ANSWER',
   CODE_DRAFT: 'CODE_DRAFT',
-  NAVIGATION: 'NAVIGATION'
+  NAVIGATION: 'NAVIGATION',
+  FLAG_TOGGLE: 'FLAG_TOGGLE'
 });
 
 /**
@@ -278,6 +279,18 @@ function processProgressSync(attempt, syncPayload, options = {}) {
       acknowledgedChanges.push(changeId);
     }
 
+    // Support flagged questions synchronization
+    let currentFlagged = [];
+    try {
+      currentFlagged = attempt.flagged_question_ids_json ? JSON.parse(attempt.flagged_question_ids_json) : [];
+    } catch {}
+
+    const incomingFlags = syncPayload.flaggedQuestionIds || syncPayload.flagged_question_ids;
+    if (Array.isArray(incomingFlags)) {
+      currentFlagged = incomingFlags.map((id) => Number(id)).filter((id) => !isNaN(id));
+      stateChanged = true;
+    }
+
     // Determine new server revision
     let newRevision = attempt.server_revision || 0;
     if (stateChanged || acknowledgedChanges.length > 0 || navQuestionId) {
@@ -291,6 +304,7 @@ function processProgressSync(attempt, syncPayload, options = {}) {
       UPDATE attempts SET
         answers_json = ?,
         draft_code_json = ?,
+        flagged_question_ids_json = ?,
         server_revision = ?,
         last_synced_at = datetime('now'),
         current_question_id = COALESCE(?, current_question_id),
@@ -301,6 +315,7 @@ function processProgressSync(attempt, syncPayload, options = {}) {
     `).run(
       JSON.stringify(currentAnswers),
       JSON.stringify(currentDrafts),
+      JSON.stringify(currentFlagged),
       newRevision,
       navQuestionId,
       navSectionId,
@@ -312,7 +327,8 @@ function processProgressSync(attempt, syncPayload, options = {}) {
     return {
       serverRevision: newRevision,
       answersCount: Object.keys(currentAnswers).length,
-      draftsCount: Object.keys(currentDrafts).length
+      draftsCount: Object.keys(currentDrafts).length,
+      flaggedCount: currentFlagged.length
     };
   });
 
@@ -366,6 +382,11 @@ function getAttemptRecoveryData(attemptId, targetDb = db) {
     draftCode = attempt.draft_code_json ? JSON.parse(attempt.draft_code_json) : {};
   } catch {}
 
+  let flaggedQuestionIds = [];
+  try {
+    flaggedQuestionIds = attempt.flagged_question_ids_json ? JSON.parse(attempt.flagged_question_ids_json) : [];
+  } catch {}
+
   const nowMs = Date.now();
   const { deadlineStr, deadlineMs } = timerSubmissionService.getEffectiveDeadline(attempt);
   const remainingSeconds = Math.max(0, Math.floor((deadlineMs - nowMs) / 1000));
@@ -390,6 +411,7 @@ function getAttemptRecoveryData(attemptId, targetDb = db) {
     syncConflictCount: attempt.sync_conflict_count || 0,
     answers,
     draftCode,
+    flaggedQuestionIds,
     tabSwitches: attempt.tab_switches || 0,
     riskScore: attempt.proctoring_risk_score || 0,
     riskLevel: attempt.proctoring_risk_level || 'NORMAL'

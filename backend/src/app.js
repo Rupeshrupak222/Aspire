@@ -51,6 +51,17 @@ function createApp() {
 
   // 8. Health check & API Routes
   const { checkDbHealth } = require('./db');
+  const { healthService } = require('./services/monitoring/health.service');
+
+  const livenessHandler = (req, res) => {
+    res.json(healthService.getLiveness());
+  };
+
+  const readinessHandler = async (req, res) => {
+    const readiness = await healthService.getReadiness();
+    res.status(readiness.ok ? 200 : 503).json(readiness);
+  };
+
   const healthHandler = (req, res) => {
     const dbStatus = checkDbHealth();
     if (!dbStatus.healthy) {
@@ -79,6 +90,10 @@ function createApp() {
     });
   };
 
+  app.get('/health/live', livenessHandler);
+  app.get('/api/health/live', livenessHandler);
+  app.get('/health/ready', readinessHandler);
+  app.get('/api/health/ready', readinessHandler);
   app.get('/health', healthHandler);
   app.get('/health/db', healthHandler);
   app.get('/api/health', healthHandler);

@@ -1,7 +1,9 @@
-// Middleware to attach a correlation Request ID and request-scoped logger.
+// Middleware to attach a validated correlation Request ID and request-scoped logger.
 const crypto = require('crypto');
 const logger = require('../utils/logger');
 const metrics = require('../utils/metrics');
+
+const SAFE_ID_REGEX = /^[a-zA-Z0-9_\-\.]{8,64}$/;
 
 function normalizePath(originalUrl) {
   if (!originalUrl) return 'unknown';
@@ -11,13 +13,29 @@ function normalizePath(originalUrl) {
     .replace(/\/\d+(?=\/|$)/g, '/:id');
 }
 
+function validateOrGenerateId(headerValue, prefix = 'req_') {
+  if (headerValue && typeof headerValue === 'string') {
+    const trimmed = headerValue.trim();
+    if (SAFE_ID_REGEX.test(trimmed)) {
+      return trimmed;
+    }
+  }
+  return `${prefix}${crypto.randomBytes(8).toString('hex')}`;
+}
+
 function requestIdMiddleware(req, res, next) {
-  const reqId = req.headers['x-request-id'] || `req_${crypto.randomBytes(8).toString('hex')}`;
+  const reqId = validateOrGenerateId(req.headers['x-request-id'], 'req_');
+  const correlationId = validateOrGenerateId(req.headers['x-correlation-id'], 'corr_');
+
   req.id = reqId;
+  req.correlationId = correlationId;
+
   res.setHeader('X-Request-Id', reqId);
+  res.setHeader('X-Correlation-Id', correlationId);
 
   req.log = logger.child({
     requestId: reqId,
+    correlationId: correlationId,
     method: req.method,
     url: req.originalUrl || req.url
   });

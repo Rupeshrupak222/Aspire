@@ -61,7 +61,13 @@
     "db:backup": "node backend/src/scripts/backup.js",
     "db:restore": "node backend/src/scripts/restore.js",
     "db:migrate": "node backend/src/scripts/migrate.js",
-    "bootstrap:admin": "node backend/src/scripts/bootstrap-admin.js"
+    "bootstrap:admin": "node backend/src/scripts/bootstrap-admin.js",
+    "backup:create": "node backend/src/commands/create-backup.js",
+    "backup:list": "node backend/src/commands/list-backups.js",
+    "backup:verify": "node backend/src/commands/verify-backup.js",
+    "backup:restore": "node backend/src/commands/restore-backup.js",
+    "backup:cleanup": "node backend/src/commands/cleanup-backups.js",
+    "test:day28": "node test/backup-disaster-recovery.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1161.0",

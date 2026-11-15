@@ -3,6 +3,7 @@
 const { AppError, ValidationError, ConflictError, ExternalServiceError } = require('../errors/app-error');
 const defaultLogger = require('../utils/logger');
 const metrics = require('../utils/metrics');
+const { errorTrackingService } = require('../services/monitoring/error-tracking.service');
 
 function errorHandler(err, req, res, next) {
   const log = req.log || defaultLogger;
@@ -71,6 +72,17 @@ function errorHandler(err, req, res, next) {
 
   if (statusCode >= 500) {
     log.error(logContext, 'Unhandled or server error');
+    try {
+      errorTrackingService.captureException(err, {
+        requestId: req.id,
+        correlationId: req.correlationId,
+        route: req.originalUrl || req.url,
+        method: req.method,
+        statusCode,
+        code,
+        category: 'api_server_error'
+      });
+    } catch {}
   } else {
     log.warn(logContext, 'Operational API error');
   }

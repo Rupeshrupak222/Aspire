@@ -383,7 +383,8 @@
 
     function alignLine() {
       if (!line || !regTitle || !celTitle || !wrapper) return;
-      if (window.innerWidth >= 992) {
+      const isVisible = window.getComputedStyle(line).display !== 'none';
+      if (isVisible) {
         const wrapRect = wrapper.getBoundingClientRect();
         const regRect = regTitle.getBoundingClientRect();
         const celRect = celTitle.getBoundingClientRect();
@@ -392,6 +393,7 @@
         line.style.left = `${leftOffset}px`;
         line.style.width = `${totalWidth}px`;
         line.style.right = 'auto';
+        line.style.opacity = '1';
 
         // Vertically center line precisely halfway between description text and icon circles across all steps
         const descEls = document.querySelectorAll('.step-desc');
@@ -407,7 +409,7 @@
             const r = el.getBoundingClientRect();
             if (r.top < minCircleTop) minCircleTop = r.top;
           });
-          if (maxDescBottom > 0 && minCircleTop < Infinity) {
+          if (maxDescBottom > 0 && minCircleTop < Infinity && minCircleTop > maxDescBottom) {
             const midY = (maxDescBottom + minCircleTop) / 2 - wrapRect.top - 1;
             line.style.top = `${midY}px`;
           }
@@ -417,14 +419,29 @@
         line.style.width = '';
         line.style.right = '';
         line.style.top = '';
+        line.style.opacity = '0';
       }
     }
 
     alignLine();
+    requestAnimationFrame(alignLine);
+    setTimeout(alignLine, 100);
+    setTimeout(alignLine, 300);
+    setTimeout(alignLine, 800);
+
     window.addEventListener('resize', alignLine, { passive: true });
     window.addEventListener('load', alignLine, { passive: true });
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(alignLine);
+    }
+
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => {
+        alignLine();
+      });
+      ro.observe(wrapper);
+      if (regTitle) ro.observe(regTitle);
+      if (celTitle) ro.observe(celTitle);
     }
 
     if (!section || !lineProgress) return;

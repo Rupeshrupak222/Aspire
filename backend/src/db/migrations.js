@@ -1270,6 +1270,167 @@ function runMigrations(db) {
           // Gracefully continue if backfill encounters legacy anomalies
         }
       }
+    },
+    {
+      version: '019_public_candidate_experience',
+      up: (d) => {
+        // 1. Extend students with verification, password, and academic columns
+        const studentCols = new Set(d.prepare("PRAGMA table_info(students)").all().map((c) => c.name));
+        if (!studentCols.has('email_verified')) {
+          d.exec("ALTER TABLE students ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0;");
+        }
+        if (!studentCols.has('phone_verified')) {
+          d.exec("ALTER TABLE students ADD COLUMN phone_verified INTEGER NOT NULL DEFAULT 0;");
+        }
+        if (!studentCols.has('password_hash')) {
+          d.exec("ALTER TABLE students ADD COLUMN password_hash TEXT;");
+        }
+        if (!studentCols.has('degree')) {
+          d.exec("ALTER TABLE students ADD COLUMN degree TEXT;");
+        }
+        if (!studentCols.has('graduation_year')) {
+          d.exec("ALTER TABLE students ADD COLUMN graduation_year TEXT;");
+        }
+
+        // 2. Extend attempts with flagged questions tracking
+        const attemptCols = new Set(d.prepare("PRAGMA table_info(attempts)").all().map((c) => c.name));
+        if (!attemptCols.has('flagged_question_ids_json')) {
+          d.exec("ALTER TABLE attempts ADD COLUMN flagged_question_ids_json TEXT NOT NULL DEFAULT '[]';");
+        }
+
+        // 3. Candidate verifications table (email tokens & SMS OTPs)
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS candidate_verifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identifier TEXT NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('MOBILE_OTP', 'EMAIL_TOKEN')),
+            code_hash TEXT NOT NULL,
+            student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+            expires_at TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 5,
+            resend_available_at TEXT NOT NULL,
+            verified_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_verif_ident_type ON candidate_verifications(identifier, type);
+          CREATE INDEX IF NOT EXISTS idx_verif_student ON candidate_verifications(student_id);
+
+          -- 4. Verified colleges catalogue for autocomplete
+          CREATE TABLE IF NOT EXISTS colleges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            city TEXT,
+            state TEXT,
+            category TEXT DEFAULT 'Engineering & Technology',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_colleges_name ON colleges(name);
+
+          -- 5. First-party campaign attribution
+          CREATE TABLE IF NOT EXISTS campaign_attributions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
+            touch_type TEXT NOT NULL CHECK(touch_type IN ('FIRST_TOUCH', 'LAST_TOUCH')),
+            utm_source TEXT,
+            utm_medium TEXT,
+            utm_campaign TEXT,
+            utm_term TEXT,
+            utm_content TEXT,
+            referral_code TEXT,
+            landing_source TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_camp_student_touch ON campaign_attributions(student_id, touch_type);
+        `);
+
+        // Seed initial verified college catalogue
+        const seedColleges = [
+          ['Indian Institute of Technology Bombay (IIT Bombay)', 'Mumbai', 'Maharashtra', 'Institute of National Importance'],
+          ['Indian Institute of Technology Delhi (IIT Delhi)', 'New Delhi', 'Delhi', 'Institute of National Importance'],
+          ['Indian Institute of Technology Madras (IIT Madras)', 'Chennai', 'Tamil Nadu', 'Institute of National Importance'],
+          ['Indian Institute of Technology Kharagpur (IIT Kharagpur)', 'Kharagpur', 'West Bengal', 'Institute of National Importance'],
+          ['Indian Institute of Technology Kanpur (IIT Kanpur)', 'Kanpur', 'Uttar Pradesh', 'Institute of National Importance'],
+          ['Indian Institute of Technology Roorkee (IIT Roorkee)', 'Roorkee', 'Uttarakhand', 'Institute of National Importance'],
+          ['Indian Institute of Technology Guwahati (IIT Guwahati)', 'Guwahati', 'Assam', 'Institute of National Importance'],
+          ['Indian Institute of Technology Hyderabad (IIT Hyderabad)', 'Hyderabad', 'Telangana', 'Institute of National Importance'],
+          ['National Institute of Technology Tiruchirappalli (NIT Trichy)', 'Tiruchirappalli', 'Tamil Nadu', 'NIT'],
+          ['National Institute of Technology Karnataka (NIT Surathkal)', 'Mangalore', 'Karnataka', 'NIT'],
+          ['National Institute of Technology Warangal (NIT Warangal)', 'Warangal', 'Telangana', 'NIT'],
+          ['National Institute of Technology Rourkela (NIT Rourkela)', 'Rourkela', 'Odisha', 'NIT'],
+          ['National Institute of Technology Calicut (NIT Calicut)', 'Kozhikode', 'Kerala', 'NIT'],
+          ['Birla Institute of Technology and Science (BITS Pilani)', 'Pilani', 'Rajasthan', 'Deemed University'],
+          ['BITS Pilani - Hyderabad Campus', 'Hyderabad', 'Telangana', 'Deemed University'],
+          ['BITS Pilani - Goa Campus', 'Goa', 'Goa', 'Deemed University'],
+          ['International Institute of Information Technology Hyderabad (IIIT Hyderabad)', 'Hyderabad', 'Telangana', 'IIIT'],
+          ['International Institute of Information Technology Bangalore (IIIT Bangalore)', 'Bengaluru', 'Karnataka', 'IIIT'],
+          ['Delhi Technological University (DTU)', 'Delhi', 'Delhi', 'State University'],
+          ['Netaji Subhas University of Technology (NSUT)', 'Delhi', 'Delhi', 'State University'],
+          ['Vellore Institute of Technology (VIT Vellore)', 'Vellore', 'Tamil Nadu', 'Deemed University'],
+          ['Manipal Institute of Technology (MIT Manipal)', 'Manipal', 'Karnataka', 'Deemed University'],
+          ['SRM Institute of Science and Technology', 'Chennai', 'Tamil Nadu', 'Deemed University'],
+          ['Thapar Institute of Engineering and Technology', 'Patiala', 'Punjab', 'Deemed University'],
+          ['College of Engineering, Pune (COEP)', 'Pune', 'Maharashtra', 'State University'],
+          ['PSG College of Technology', 'Coimbatore', 'Tamil Nadu', 'Autonomous College'],
+          ['Jawaharlal Nehru Technological University Hyderabad (JNTUH)', 'Hyderabad', 'Telangana', 'State University'],
+          ['Osmania University College of Engineering', 'Hyderabad', 'Telangana', 'State University'],
+          ['Anna University', 'Chennai', 'Tamil Nadu', 'State University'],
+          ['Jadavpur University', 'Kolkata', 'West Bengal', 'State University'],
+          ['Amity University', 'Noida', 'Uttar Pradesh', 'Private University'],
+          ['Shiv Nadar University', 'Greater Noida', 'Uttar Pradesh', 'Private University'],
+          ['RV College of Engineering (RVCE)', 'Bengaluru', 'Karnataka', 'Autonomous College'],
+          ['BMS College of Engineering', 'Bengaluru', 'Karnataka', 'Autonomous College'],
+          ['MS Ramaiah Institute of Technology', 'Bengaluru', 'Karnataka', 'Autonomous College']
+        ];
+
+        const insertCollege = d.prepare(`
+          INSERT OR IGNORE INTO colleges (name, city, state, category) VALUES (?, ?, ?, ?)
+        `);
+        for (const [name, city, state, cat] of seedColleges) {
+          insertCollege.run(name, city, state, cat);
+        }
+      }
+    },
+    {
+      version: '020_monitoring_observability',
+      up: (d) => {
+        // 1. Worker Heartbeats Table for Active Fleet Telemetry
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS worker_heartbeats (
+            worker_name TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'ONLINE' CHECK(status IN ('ONLINE', 'BUSY', 'STALE', 'STOPPED', 'FAILED')),
+            last_heartbeat_at TEXT NOT NULL DEFAULT (datetime('now')),
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            pid INTEGER,
+            hostname TEXT,
+            metadata_json TEXT NOT NULL DEFAULT '{}'
+          );
+          CREATE INDEX IF NOT EXISTS idx_worker_hb_status ON worker_heartbeats(status, last_heartbeat_at);
+        `);
+
+        // 2. Alert Incidents & Deduplication Registry
+        d.exec(`
+          CREATE TABLE IF NOT EXISTS alert_incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dedup_key TEXT NOT NULL UNIQUE,
+            severity TEXT NOT NULL CHECK(severity IN ('P0', 'P1', 'P2', 'P3')),
+            service TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'TRIGGERED' CHECK(status IN ('TRIGGERED', 'RESOLVED', 'SUPPRESSED')),
+            trigger_count INTEGER NOT NULL DEFAULT 1,
+            last_triggered_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            last_notified_at TEXT NOT NULL DEFAULT (datetime('now')),
+            details_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+          CREATE INDEX IF NOT EXISTS idx_alert_inc_status ON alert_incidents(status, severity);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_inc_key ON alert_incidents(dedup_key);
+        `);
+      }
     }
   ];
 

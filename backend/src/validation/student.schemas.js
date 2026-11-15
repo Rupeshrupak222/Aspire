@@ -13,6 +13,9 @@ const registerSchema = z.object({
   city: z.string().trim().max(100, 'City name too long').optional().or(z.literal('')).transform(v => v || null),
   grad_year: z.string().trim().max(20).optional().or(z.literal('')).transform(v => v || null),
   track: z.string().trim().max(60).optional().or(z.literal('')).transform(v => v || null),
+  degree: z.string().trim().max(100, 'Degree too long').optional().or(z.literal('')).transform(v => v || null),
+  graduation_year: z.union([z.string(), z.number()]).optional().transform(v => v ? String(v) : null),
+  password: z.string().min(8, 'Password must be at least 8 characters').max(128).optional().or(z.literal('')).transform(v => v || null),
   campaign_code: z.string().trim().max(60).optional().or(z.literal('')).transform(v => v || null)
 }).passthrough(); // Allow passthrough to avoid dropping any client metadata
 

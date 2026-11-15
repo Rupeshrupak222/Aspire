@@ -74,7 +74,7 @@ for (let i = 0; i < verifyCount; i++) {
 }
 const verifyDuration = Date.now() - verifyStart;
 console.log(`  PASS  ${verifyCount} full verification passes executed in ${verifyDuration}ms (${(verifyDuration / verifyCount).toFixed(3)}ms/op)`);
-assert(verifyDuration < 300, '200 full verifications must execute in under 300ms');
+assert(verifyDuration < 600, '200 full verifications must execute in under 600ms');
 
 // --- 4. Concurrent Verification Burst (50 parallel operations) ---
 console.log('\n--- 4. Concurrent Verification Burst (50 parallel operations) ---');

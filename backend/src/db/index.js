@@ -6,16 +6,44 @@ const fs = require('fs');
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', '..', '..', 'data', 'aspire.db');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-db.pragma('busy_timeout = 5000');
-db.pragma('synchronous = NORMAL');
-db.pragma('cache_size = -64000'); // 64MB memory cache for fast index/table lookups
-db.pragma('temp_store = MEMORY');
+function applyPragmas(targetDb) {
+  targetDb.pragma('journal_mode = WAL');
+  targetDb.pragma('foreign_keys = ON');
+  targetDb.pragma('busy_timeout = 5000');
+  targetDb.pragma('synchronous = NORMAL');
+  targetDb.pragma('cache_size = -64000'); // 64MB memory cache for fast index/table lookups
+  targetDb.pragma('temp_store = MEMORY');
+}
+
+let activeDbInstance = new Database(DB_PATH);
+applyPragmas(activeDbInstance);
 
 const { runMigrations } = require('./migrations');
-runMigrations(db);
+runMigrations(activeDbInstance);
+
+// Dynamic proxy to support closing, swapping, and reopening during backup restore
+const db = new Proxy({}, {
+  get(target, prop) {
+    if (prop === '_rawDb') return activeDbInstance;
+    const val = activeDbInstance[prop];
+    return typeof val === 'function' ? val.bind(activeDbInstance) : val;
+  },
+  set(target, prop, value) {
+    activeDbInstance[prop] = value;
+    return true;
+  }
+});
+
+function reopenDatabase(newPath = DB_PATH) {
+  if (activeDbInstance && activeDbInstance.open) {
+    try {
+      activeDbInstance.close();
+    } catch {}
+  }
+  activeDbInstance = new Database(newPath);
+  applyPragmas(activeDbInstance);
+  return activeDbInstance;
+}
 
 const DEFAULT_CONFIG = {
   test_title: 'Aspire Scholarship Test',
@@ -101,9 +129,10 @@ function getDbStats(targetDb = db) {
 }
 
 function closeDatabase(targetDb = db) {
-  if (targetDb && targetDb.open) {
+  const toClose = (targetDb && targetDb._rawDb) ? targetDb._rawDb : (targetDb || activeDbInstance);
+  if (toClose && toClose.open) {
     try {
-      targetDb.close();
+      toClose.close();
       return true;
     } catch (e) {
       console.error('[db] Error closing database:', e.message);
@@ -120,7 +149,7 @@ module.exports = {
   checkDbHealth,
   getDbStats,
   closeDatabase,
+  reopenDatabase,
   DEFAULT_CONFIG,
   DB_PATH
 };
-

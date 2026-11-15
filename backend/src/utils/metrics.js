@@ -38,7 +38,21 @@ const state = {
   },
   certificates: {
     count: 0,
+    failures: 0,
     totalDurationMs: 0
+  },
+  errors: {
+    total: 0,
+    byCategory: new Map(), // category -> count
+    byCode: new Map() // code -> count
+  },
+  outbox: {
+    dispatched: 0,
+    failed: 0
+  },
+  providers: {
+    coding: { success: 0, failed: 0, totalDurationMs: 0 },
+    email: { success: 0, failed: 0 }
   }
 };
 
@@ -131,6 +145,60 @@ const metrics = {
   },
 
   /**
+   * Record a certificate generation failure
+   */
+  recordCertFailure() {
+    state.certificates.failures++;
+  },
+
+  /**
+   * Record an error occurrence with category and code
+   */
+  recordError(category = 'general', code = 'UNKNOWN') {
+    state.errors.total++;
+    const catCount = state.errors.byCategory.get(category) || 0;
+    state.errors.byCategory.set(category, catCount + 1);
+
+    const codeStr = String(code);
+    const codeCount = state.errors.byCode.get(codeStr) || 0;
+    state.errors.byCode.set(codeStr, codeCount + 1);
+  },
+
+  /**
+   * Record an outbox dispatch result
+   */
+  recordOutboxDelivery(success) {
+    if (success) {
+      state.outbox.dispatched++;
+    } else {
+      state.outbox.failed++;
+    }
+  },
+
+  /**
+   * Record coding execution provider metrics
+   */
+  recordCodingExecution(success, durationMs = 0) {
+    if (success) {
+      state.providers.coding.success++;
+    } else {
+      state.providers.coding.failed++;
+    }
+    state.providers.coding.totalDurationMs += durationMs;
+  },
+
+  /**
+   * Record email notification delivery metrics
+   */
+  recordEmailDelivery(success) {
+    if (success) {
+      state.providers.email.success++;
+    } else {
+      state.providers.email.failed++;
+    }
+  },
+
+  /**
    * Generate point-in-time metrics snapshot
    */
   getSnapshot() {
@@ -196,10 +264,34 @@ const metrics = {
       },
       certificates: {
         totalGenerated: state.certificates.count,
+        totalFailures: state.certificates.failures,
         avgDurationMs:
           state.certificates.count > 0
             ? (state.certificates.totalDurationMs / state.certificates.count).toFixed(1)
             : 0
+      },
+      errors: {
+        total: state.errors.total,
+        byCategory: Object.fromEntries(state.errors.byCategory),
+        byCode: Object.fromEntries(state.errors.byCode)
+      },
+      outbox: {
+        dispatched: state.outbox.dispatched,
+        failed: state.outbox.failed
+      },
+      providers: {
+        coding: {
+          success: state.providers.coding.success,
+          failed: state.providers.coding.failed,
+          avgDurationMs:
+            state.providers.coding.success > 0
+              ? (state.providers.coding.totalDurationMs / state.providers.coding.success).toFixed(1)
+              : 0
+        },
+        email: {
+          success: state.providers.email.success,
+          failed: state.providers.email.failed
+        }
       },
       system: {
         cpuPercent: Number(cpuPercent),
@@ -223,7 +315,15 @@ const metrics = {
     state.routes.clear();
     state.db = { queries: 0, transactions: 0, busyErrors: 0, totalDurationMs: 0 };
     state.finalization = { count: 0, totalDurationMs: 0 };
-    state.certificates = { count: 0, totalDurationMs: 0 };
+    state.certificates = { count: 0, failures: 0, totalDurationMs: 0 };
+    state.errors.total = 0;
+    state.errors.byCategory.clear();
+    state.errors.byCode.clear();
+    state.outbox = { dispatched: 0, failed: 0 };
+    state.providers = {
+      coding: { success: 0, failed: 0, totalDurationMs: 0 },
+      email: { success: 0, failed: 0 }
+    };
     if (elHistogram && typeof elHistogram.reset === 'function') {
       try { elHistogram.reset(); } catch {}
     }
